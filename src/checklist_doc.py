@@ -29,7 +29,7 @@ class ChecklistDocumentor:
         self.preview_frame = None
         self.data_analysis = {}
         self.column_stats = {}
-        self.use_supervisor = False
+        self.use_supervisor = True  # Default to True to enable supervisor by default
         self.supervisor_available = self.supervisor_erag_api is not None
         self.has_header = True  # Default to True since most files have headers
         self.output_file = None
@@ -282,49 +282,42 @@ class ChecklistDocumentor:
 
     {worker_response}
 
-    Your task is to review, enhance, and make this documentation more SPECIFIC and PRACTICAL for THIS PARTICULAR control. The current documentation may be too generic and theoretical - your job is to make it concrete and directly applicable to this specific control.
+    Your task is to ADD ADDITIONAL INSIGHTS AND DETAILS to this documentation for THIS PARTICULAR control. DO NOT REWRITE what is already there - only ADD important points that are missing. Use transitional phrases like "In addition," "Also note that," "Be careful about," "We also need to consider," "It's worth mentioning that," etc.
 
-    1. **Make the Control Interpretation More Specific:**
-    - Ensure the interpretation directly addresses THIS control's practical implementation
-    - Add specific business context about where and how THIS control operates
-    - Remove any generic audit language that could apply to any control
+    Please enhance the documentation by ADDING (not replacing) information in these areas:
 
-    2. **Make Test Procedures Concrete and Practical:**
-    - Replace any generic test steps with SPECIFIC procedures for THIS control
-    - Add realistic sample sizes, specific documents to review, and exact systems to check
-    - Ensure test procedures are detailed enough that a junior auditor could follow them exactly
+    1. **Additional Control Interpretation Insights:**
+    - Add any missing nuances about how THIS control is implemented in practice
+    - Add additional business context that wasn't mentioned
 
-    3. **Make Documentation Guidance Control-Specific:**
-    - Replace generic documentation advice with SPECIFIC guidance for THIS control
-    - Name actual documents, screenshots, and evidence needed for THIS control
-    - Provide realistic examples of documentation specific to THIS control
+    2. **Additional Test Procedure Considerations:**
+    - Add any specialized testing approaches that weren't mentioned
+    - Add any additional sampling considerations or edge cases to test
+    - Add any extra validation methods that were overlooked
 
-    4. **Make Finding Scenarios Control-Specific:**
-    - Ensure all "It is a [severity] audit finding if..." statements directly relate to THIS control
-    - Replace any generic findings with scenarios that specifically relate to THIS control
-    - Add concrete examples that show deep understanding of how THIS control could fail
+    3. **Additional Documentation Requirements:**
+    - Add any additional evidence types that should be collected
+    - Add any documentation best practices that weren't mentioned
 
-    5. **Make Risk Assessment Control-Specific:**
-    - Replace generic risks with actual consequences specific to THIS control's failure
-    - Add industry-specific impacts that directly relate to THIS control
-    - Provide quantified or measurable impacts where possible
+    4. **Additional Possible Findings:**
+    - Add any additional critical, major, or minor finding scenarios using the format "In addition, it is a [severity] audit finding if..."
+    - Add any subtle compliance issues that might be missed
 
-    6. **Add Specific Regulatory Citations:**
-    - Replace general regulatory mentions with specific sections/paragraphs
-    - Add actual citation numbers or specific requirements from standards
-    - Connect THIS control directly to specific compliance requirements
+    5. **Additional Risk Considerations:**
+    - Add any additional risk factors or consequences not already mentioned
+    - Add any dependencies on other controls
 
-    7. **Make the Example Documentation Realistic:**
-    - Ensure the example reads like a REAL audit report for THIS control
-    - Add realistic dates, sample sizes, specific findings, and detailed test steps
-    - Make sure all parts of the example are specific to THIS control
+    6. **Additional Regulatory Information:**
+    - Add any additional regulations or standards that apply
+    - Add any regulatory nuances that were missed
 
-    8. **Add Control-Specific Expert Insights:**
-    - Share specialized knowledge that only applies to testing THIS control
-    - Add practical shortcuts or efficiencies specific to THIS control
-    - Provide real-world challenges unique to THIS control
+    7. **Additional Expert Tips:**
+    - Add any senior auditor insights that would help with THIS control
+    - Add any efficiency tips or pitfalls to avoid
 
-    Your response must be concrete, practical, and SPECIFICALLY tailored to this exact control. Remove any content that reads like generic audit guidance. Your goal is to transform theoretical audit concepts into practical, actionable guidance that a junior auditor could follow to test THIS SPECIFIC control effectively."""
+    IMPORTANT: Your response should ONLY CONTAIN ADDITIONAL INFORMATION - do not repeat what's already in the documentation. Start your response with "## Additional Senior Auditor Insights" and focus on value-adding content that complements what's already there. Use clear transition phrases to indicate you're adding to the existing documentation.
+
+    Remember that your additions should be specific to THIS control, not generic audit advice."""
 
     def write_to_output_file(self, content):
         """Write content to the output file and flush immediately."""
@@ -446,7 +439,8 @@ class ChecklistDocumentor:
                     self.check_if_paused()
                     
                     supervisor_response = self.process_control_with_supervisor(control, worker_response)
-                    final_response = supervisor_response
+                    # Combine worker and supervisor responses instead of replacing
+                    final_response = f"{worker_response}\n\n{supervisor_response}"
                 
                 # Format the result for text output
                 text_output = f"Control {i}: {control}\n\n{final_response}\n\n{'='*80}\n\n"
@@ -822,12 +816,46 @@ class ChecklistDocumentor:
         column_frame.tag = 'column_selection'  # Custom attribute to identify this frame
         column_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
+        # Create top buttons frame 
+        top_buttons_frame = ttk.Frame(column_frame)
+        top_buttons_frame.pack(fill="x", padx=5, pady=5)
+        
+        # Button to select column and proceed (at TOP of frame)
+        def on_select_column():
+            selected_items = columns_list.selection()
+            if not selected_items:
+                messagebox.showwarning("Warning", "Please select a column first.")
+                return
+                
+            column_name = columns_list.item(selected_items[0], "tags")[0]
+            self.selected_column = column_name
+            print(success(f"Selected column: {column_name}"))
+            
+            # Show confirmation and proceed
+            if not messagebox.askyesno("Confirm Selection", 
+                                    f"You selected column: {column_name}\n\n"
+                                    f"Do you want to proceed with documenting this column?"):
+                return
+            
+            # Check if at least one output format is selected
+            if not self.output_txt_var.get() and not self.output_pdf_var.get():
+                messagebox.showwarning("Warning", "Please select at least one output format (Text or PDF).")
+                return
+                
+            # Close the window and process
+            self.window.destroy()
+            self.process_checklist()
+        
+        # Add the button to TOP of frame
+        ttk.Button(top_buttons_frame, text="Document Selected Column", command=on_select_column).pack(pady=5)
+        
         # Create a treeview with column statistics
         columns_list = ttk.Treeview(
             column_frame, 
             columns=("type", "unique", "nulls", "samples"), 
             show="headings", 
-            height=min(10, len(self.column_stats))
+            height=5,  # Reduced height from 10 to 5
+            selectmode="browse"
         )
         columns_list.heading("type", text="Type")
         columns_list.heading("unique", text="Unique Values")
@@ -886,7 +914,7 @@ class ChecklistDocumentor:
         preview_label = ttk.Label(column_frame, text="Column Preview:", anchor="w")
         preview_label.pack(fill="x", padx=5, pady=(10, 0))
         
-        preview_text = tk.Text(column_frame, height=10, width=60, wrap="word")
+        preview_text = tk.Text(column_frame, height=5, width=60, wrap="word")  # Reduced height from 10 to 5
         preview_text.pack(fill="both", padx=5, pady=5)
         
         # Set as instance variable to access in preview_column
@@ -929,8 +957,8 @@ class ChecklistDocumentor:
             
             ttk.Label(
                 config_frame,
-                text="Using the supervisor model will produce more comprehensive and higher quality\n"
-                     "documentation, but will take approximately twice as long to process.",
+                text="Using the supervisor model will provide additional insights and details\n"
+                     "to enhance basic documentation, but will take more time to process.",
                 foreground="gray"
             ).pack(anchor="w", padx=5, pady=0)
             
@@ -963,32 +991,7 @@ class ChecklistDocumentor:
         )
         pdf_check.pack(anchor="w", padx=20)
         
-        # Button to select column and proceed
-        def on_select_column():
-            selected_items = columns_list.selection()
-            if not selected_items:
-                messagebox.showwarning("Warning", "Please select a column first.")
-                return
-                
-            column_name = columns_list.item(selected_items[0], "tags")[0]
-            self.selected_column = column_name
-            print(success(f"Selected column: {column_name}"))
-            
-            # Show confirmation and proceed
-            if not messagebox.askyesno("Confirm Selection", 
-                                     f"You selected column: {column_name}\n\n"
-                                     f"Do you want to proceed with documenting this column?"):
-                return
-            
-            # Check if at least one output format is selected
-            if not self.output_txt_var.get() and not self.output_pdf_var.get():
-                messagebox.showwarning("Warning", "Please select at least one output format (Text or PDF).")
-                return
-                
-            # Close the window and process
-            self.window.destroy()
-            self.process_checklist()
-            
+        # Also add document button at bottom for convenience
         ttk.Button(column_frame, text="Document Selected Column", command=on_select_column).pack(pady=10)
 
     def preview_column(self, column_name):
@@ -1104,7 +1107,7 @@ class ChecklistDocumentor:
             
             if self.supervisor_available:
                 print(info(f"Worker model: {self.worker_erag_api.model}"))
-                print(info(f"Supervisor model: {self.supervisor_erag_api.model}"))
+                print(info(f"Supervisor model: {self.supervisor_erag_api.model} (enabled by default)"))
             else:
                 print(info(f"Using model: {self.worker_erag_api.model}"))
                 print(info("Supervisor model not available - operating in single model mode"))
