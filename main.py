@@ -56,6 +56,7 @@ from src.textbook_generator import TextbookGenerator, SupervisorTextbookGenerato
 from src.textbook_rag import RagTextbookGenerator
 from src.text_analysis import run_text_analysis
 from src.check_dq import DataQualityChecker
+from src.checklist_doc import ChecklistDocumentor
 
 
 # Add the project root directory to the Python path
@@ -656,6 +657,11 @@ class ERAGGUI:
         gen_dset_button = tk.Button(rag_frame, text="Gen DSet", command=self.run_gen_dset)
         gen_dset_button.pack(side="left", padx=5, pady=5)
         ToolTip(gen_dset_button, "Generate a dataset from Q&A pairs using LLM")
+
+         # Add the new Checklist Doc button
+        checklist_doc_button = tk.Button(rag_frame, text="Checklist Doc", command=self.run_checklist_doc)
+        checklist_doc_button.pack(side="left", padx=5, pady=5)
+        ToolTip(checklist_doc_button, "Document checklist items from Excel or CSV files using AI")
 
     def create_web_rag_frame(self):
         rag_frame = tk.LabelFrame(self.main_tab, text="Web Rag")
@@ -2084,6 +2090,34 @@ class ERAGGUI:
             error_message = f"An error occurred during Advanced Exploratory Data Analysis (Batch 7): {str(e)}"
             print(error(error_message))
             messagebox.showerror("Error", error_message)
+
+    def run_checklist_doc(self):
+        try:
+            api_type = self.api_type_var.get()
+            worker_model = self.model_var.get()
+            supervisor_model = self.supervisor_model_var.get()
+            
+            # Check API keys before proceeding
+            self.check_api_keys()
+            
+            # Create separate EragAPI instances for worker and supervisor models
+            worker_erag_api = create_erag_api(api_type, worker_model)
+            
+            # Only create supervisor API if a different model is selected 
+            if supervisor_model and supervisor_model != worker_model:
+                supervisor_erag_api = create_erag_api(api_type, supervisor_model)
+            else:
+                # If same model or no supervisor, use None which will disable supervisor features
+                supervisor_erag_api = None
+            
+            # Create and run ChecklistDocumentor with both APIs
+            checklist_documenter = ChecklistDocumentor(worker_erag_api, supervisor_erag_api)
+            
+            # Run the checklist documenter
+            checklist_documenter.run()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred while starting the Checklist Documenter: {str(e)}")
 
 
     def upload_financial_data(self):
