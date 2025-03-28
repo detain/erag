@@ -3,6 +3,8 @@ import os
 import logging
 import threading
 import time
+import signal
+import sys
 from functools import wraps
 
 # Third-party imports
@@ -56,6 +58,35 @@ class AdvancedExploratoryDataAnalysisB5:
         self.image_data = []
         self.pdf_generator = None
         self.settings = settings
+        self.database_description = ""
+        self.paused = False
+        self.setup_signal_handler()
+        self.entity_names_mapping = {}
+
+    def setup_signal_handler(self):
+        """Set up signal handler for Ctrl+C"""
+        signal.signal(signal.SIGINT, self.handle_signal)
+
+    def handle_signal(self, sig, frame):
+        """Handle Ctrl+C by pausing execution"""
+        if not self.paused:
+            self.paused = True
+            print(warning("\nScript paused. Press Enter to continue or Ctrl+C again to exit..."))
+            try:
+                user_input = input()
+                self.paused = False
+                print(info("Resuming execution..."))
+            except KeyboardInterrupt:
+                print(error("\nExiting script..."))
+                sys.exit(0)
+        else:
+            print(error("\nExiting script..."))
+            sys.exit(0)
+
+    def check_if_paused(self):
+        """Check if execution is paused and wait for Enter if needed"""
+        while self.paused:
+            time.sleep(0.1)  # Small sleep to prevent CPU hogging
 
     def calculate_figure_size(self, aspect_ratio=16/9):
         max_width = int(np.sqrt(self.max_pixels * aspect_ratio))
@@ -88,6 +119,40 @@ class AdvancedExploratoryDataAnalysisB5:
             return wrapper
         return decorator
 
+    def prompt_for_database_description(self):
+        """Ask the user for a description of the database"""
+        print(info("Please provide a description of the database. This will help the AI models provide better insights."))
+        print(info("Describe the purpose, main tables, key data points, and any other relevant information:"))
+        self.database_description = input("> ")
+        print(success(f"Database description received: {self.database_description}"))
+
+    def identify_entity_names(self, df):
+        """
+        Identify actual names of entities in the dataset instead of using generic names
+        """
+        entity_names = {}
+        
+        # Try to identify teams, customers, products, clusters, etc.
+        for col in df.columns:
+            if col.lower() in ['team', 'team_name', 'group', 'department']:
+                entity_names['teams'] = df[col].unique().tolist()
+            elif col.lower() in ['customer', 'client', 'customer_name', 'client_name']:
+                entity_names['customers'] = df[col].unique().tolist()
+            elif col.lower() in ['product', 'item', 'product_name', 'service']:
+                entity_names['products'] = df[col].unique().tolist()
+            elif col.lower() in ['cluster', 'segment', 'category']:
+                entity_names['clusters'] = df[col].unique().tolist()
+            elif col.lower() in ['region', 'location', 'area', 'country', 'city']:
+                entity_names['regions'] = df[col].unique().tolist()
+        
+        # For categorical columns with few unique values, they might be important entities
+        for col in df.select_dtypes(include=['object', 'category']).columns:
+            unique_values = df[col].unique()
+            if 2 <= len(unique_values) <= 20 and col not in entity_names:
+                entity_names[col.lower()] = unique_values.tolist()
+        
+        return entity_names
+
     @timeout(10)
     def generate_plot(self, plot_function, *args, **kwargs):
         return plot_function(*args, **kwargs)
@@ -101,16 +166,16 @@ class AdvancedExploratoryDataAnalysisB5:
     def run(self):
         print(info(f"Starting Advanced Exploratory Data Analysis (Batch5) on {self.db_path}"))
         
+        # Ask for database description before starting analysis
+        self.prompt_for_database_description()
+        
         tables = self.get_tables()
         for table in tables:
             self.analyze_table(table)
         
-        
         self.save_text_output()
         self.generate_pdf_report()
         print(success(f"Advanced Exploratory Data Analysis (Batch5) completed. Results saved in {self.output_folder}"))
-
-
 
     def analyze_table(self, table_name):
         self.table_name = table_name
@@ -121,9 +186,18 @@ class AdvancedExploratoryDataAnalysisB5:
         
         print(highlight(f"\nAnalyzing table: {table_name}"))
         self.text_output += f"\nAnalyzing table: {table_name}\n"
+        
+        # Load the entire dataset
         with sqlite3.connect(self.db_path) as conn:
             df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
-
+            print(info(f"Loaded full dataset with {len(df)} rows and {len(df.columns)} columns"))
+        
+        # Identify entity names in the dataset
+        self.entity_names_mapping = self.identify_entity_names(df)
+        entity_description = self.format_entity_description()
+        
+        print(info(f"Identified entities in the data: {entity_description}"))
+        
         analysis_methods = [
             self.cooks_distance_analysis,
             self.stl_decomposition_analysis,
@@ -143,6 +217,9 @@ class AdvancedExploratoryDataAnalysisB5:
         ]
 
         for method in analysis_methods:
+            # Check if script is paused
+            self.check_if_paused()
+                
             try:
                 method(df, table_name)
             except Exception as e:
@@ -150,8 +227,25 @@ class AdvancedExploratoryDataAnalysisB5:
                 print(error(error_message))
                 self.text_output += f"\n{error_message}\n"
                 self.pdf_content.append((method.__name__, [], error_message))
+                
+                # Write error to method-specific output file
+                method_name = method.__name__
+                with open(os.path.join(self.output_folder, f"{method_name}_results.txt"), "w", encoding='utf-8') as f:
+                    f.write(error_message)
             finally:
                 self.technique_counter += 1
+
+    def format_entity_description(self):
+        """Format the entity names for inclusion in prompts"""
+        if not self.entity_names_mapping:
+            return "No specific entities identified."
+        
+        description = []
+        for entity_type, names in self.entity_names_mapping.items():
+            if names:
+                description.append(f"{entity_type.capitalize()}: {', '.join(str(name) for name in names)}")
+        
+        return "\n".join(description)
 
     def cooks_distance_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - Cook's Distance Analysis"))
@@ -222,15 +316,21 @@ class AdvancedExploratoryDataAnalysisB5:
                 threshold = 4 / (n - p)
                 influential_points = np.where(cooks_d > threshold)[0]
                 
-                self.interpret_results("Cook's Distance Analysis", {
+                # Identify actual entities associated with influential points if possible
+                influential_entities = self.identify_influential_entities(df, influential_points)
+                
+                results = {
                     'image_paths': image_paths,
                     'influential_points': influential_points.tolist(),
+                    'influential_entities': influential_entities,
                     'threshold': threshold,
                     'max_cooks_distance': np.max(cooks_d),
                     'mean_cooks_distance': np.mean(cooks_d),
                     'num_influential_points': len(influential_points),
                     'percent_influential': (len(influential_points) / n) * 100
-                }, table_name)
+                }
+                
+                self.interpret_results("Cook's Distance Analysis", results, table_name)
             else:
                 print("Skipping Cook's Distance plot due to timeout.")
         
@@ -239,12 +339,48 @@ class AdvancedExploratoryDataAnalysisB5:
             print(error(error_message))
             self.interpret_results("Cook's Distance Analysis", {'error': error_message}, table_name)
 
+    def identify_influential_entities(self, df, influential_indices):
+        """Identify actual entities associated with influential points"""
+        entities = {}
+        
+        # Try to find entity columns in the DataFrame
+        entity_cols = []
+        for col in df.columns:
+            if col.lower() in ['team', 'team_name', 'customer', 'product', 'region', 'cluster', 
+                             'group', 'department', 'client', 'segment', 'category']:
+                entity_cols.append(col)
+        
+        if not entity_cols:
+            # If no obvious entity columns, check categorical columns with few unique values
+            for col in df.select_dtypes(include=['object', 'category']).columns:
+                if df[col].nunique() <= 20:
+                    entity_cols.append(col)
+        
+        # Get the values for the influential points
+        for col in entity_cols:
+            influential_values = df.iloc[influential_indices][col].value_counts().to_dict()
+            if influential_values:
+                entities[col] = influential_values
+        
+        return entities
+
     def stl_decomposition_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - STL Decomposition Analysis"))
         image_paths = []
         
         date_cols = df.select_dtypes(include=['datetime64']).columns
         numeric_cols = df.select_dtypes(include=[np.number]).columns
+        
+        # Try to convert string columns to datetime if no datetime columns are found
+        if len(date_cols) == 0:
+            for col in df.select_dtypes(include=['object']).columns:
+                try:
+                    df[col] = pd.to_datetime(df[col])
+                    date_cols = [col]
+                    print(info(f"Converted column {col} to datetime for STL analysis"))
+                    break
+                except:
+                    continue
         
         if len(date_cols) == 0 or len(numeric_cols) == 0:
             print(warning("No suitable columns for STL decomposition analysis."))
@@ -256,7 +392,20 @@ class AdvancedExploratoryDataAnalysisB5:
         df = df.sort_values(by=date_col)
         df = df.set_index(date_col)
         
-        stl = STL(df[numeric_col], period=12)  # Assuming monthly data, adjust as needed
+        # Determine the period based on data frequency
+        if isinstance(df.index, pd.DatetimeIndex):
+            if df.index.inferred_freq == 'D' or df.index.inferred_freq == 'B':
+                period = 7  # Weekly seasonality for daily data
+            elif df.index.inferred_freq in ['M', 'MS', 'BM', 'BMS']:
+                period = 12  # Yearly seasonality for monthly data
+            elif df.index.inferred_freq in ['Q', 'QS', 'BQ', 'BQS']:
+                period = 4  # Yearly seasonality for quarterly data
+            else:
+                period = 12  # Default
+        else:
+            period = 12  # Default
+            
+        stl = STL(df[numeric_col], period=period)
         result = stl.fit()
         
         def plot_stl_decomposition():
@@ -280,11 +429,21 @@ class AdvancedExploratoryDataAnalysisB5:
             plt.close(fig)
             image_paths.append(img_path)
             
-            self.interpret_results("STL Decomposition Analysis", {
+            # Get key time periods with significant seasonal patterns
+            seasonal_component = pd.Series(result.seasonal, index=df.index)
+            key_periods = seasonal_component.groupby(seasonal_component.index.month).mean().sort_values(ascending=False)
+            
+            results = {
                 'image_paths': image_paths,
                 'trend_strength': 1 - np.var(result.resid) / np.var(result.trend + result.resid),
-                'seasonal_strength': 1 - np.var(result.resid) / np.var(result.seasonal + result.resid)
-            }, table_name)
+                'seasonal_strength': 1 - np.var(result.resid) / np.var(result.seasonal + result.resid),
+                'key_seasonal_periods': key_periods.to_dict(),
+                'period_used': period,
+                'time_column': date_col,
+                'value_column': numeric_col
+            }
+            
+            self.interpret_results("STL Decomposition Analysis", results, table_name)
         else:
             print("Skipping STL Decomposition plot due to timeout.")
 
@@ -298,12 +457,19 @@ class AdvancedExploratoryDataAnalysisB5:
             return
         
         results = {}
+        outlier_entities = {}
+        
         for col in numeric_cols:
             series = df[col]
             rolling_median = series.rolling(window=5, center=True).median()
             mad = np.abs(series - rolling_median).rolling(window=5, center=True).median()
             threshold = 3 * 1.4826 * mad
             outliers = np.abs(series - rolling_median) > threshold
+            
+            # Find actual entities associated with outliers
+            if outliers.sum() > 0:
+                outlier_indices = np.where(outliers)[0]
+                outlier_entities[col] = self.identify_influential_entities(df, outlier_indices)
             
             def plot_hampel():
                 fig, ax = plt.subplots(figsize=self.calculate_figure_size())
@@ -325,16 +491,16 @@ class AdvancedExploratoryDataAnalysisB5:
                 
                 results[col] = {
                     'outliers_count': outliers.sum(),
-                    'outliers_percentage': (outliers.sum() / len(series)) * 100
+                    'outliers_percentage': (outliers.sum() / len(series)) * 100,
+                    'outlier_values': series[outliers].tolist() if outliers.sum() <= 20 else f"{outliers.sum()} outliers found"
                 }
             else:
                 print(f"Skipping Hampel Filter plot for {col} due to timeout.")
         
-        self.interpret_results("Hampel Filter Analysis", {
-            'image_paths': image_paths,
-            'results': results
-        }, table_name)
-
+        results['image_paths'] = image_paths
+        results['outlier_entities'] = outlier_entities
+        
+        self.interpret_results("Hampel Filter Analysis", results, table_name)
 
     def gesd_test_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - GESD Test Analysis"))
@@ -342,6 +508,7 @@ class AdvancedExploratoryDataAnalysisB5:
         
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         results = {}
+        outlier_entities = {}
         
         for col in numeric_cols:
             data = df[col].dropna()
@@ -354,28 +521,36 @@ class AdvancedExploratoryDataAnalysisB5:
                     return []
                 
                 outliers = []
+                data_array = data.values.copy()
+                indices = np.arange(len(data))
+                
                 for i in range(max_outliers):
-                    if n <= 2:
+                    if len(data_array) <= 2:
                         break
-                    mean = np.mean(data)
-                    std = np.std(data, ddof=1)
-                    R = np.max(np.abs(data - mean)) / std
-                    idx = np.argmax(np.abs(data - mean))
+                    mean = np.mean(data_array)
+                    std = np.std(data_array, ddof=1)
+                    R = np.max(np.abs(data_array - mean)) / std
+                    idx = np.argmax(np.abs(data_array - mean))
                     
-                    t_ppf = t.ppf(1 - alpha / (2 * n), n - 2)
-                    lambda_crit = ((n - 1) * t_ppf) / np.sqrt((n - 2 + t_ppf**2) * n)
+                    t_ppf = t.ppf(1 - alpha / (2 * len(data_array)), len(data_array) - 2)
+                    lambda_crit = ((len(data_array) - 1) * t_ppf) / np.sqrt((len(data_array) - 2 + t_ppf**2) * len(data_array))
                     
                     if R > lambda_crit:
-                        outliers.append((idx, data[idx]))
-                        data = np.delete(data, idx)
-                        n -= 1
+                        outliers.append((indices[idx], data_array[idx]))
+                        data_array = np.delete(data_array, idx)
+                        indices = np.delete(indices, idx)
                     else:
                         break
                 
                 return outliers
             
-            outliers = gesd_test(data.values)
+            outliers = gesd_test(data)
             results[col] = outliers
+            
+            # Find actual entities associated with outliers
+            if outliers:
+                outlier_indices = [idx for idx, _ in outliers]
+                outlier_entities[col] = self.identify_influential_entities(df, outlier_indices)
 
             def plot_gesd():
                 fig, ax = plt.subplots(figsize=self.calculate_figure_size())
@@ -399,10 +574,10 @@ class AdvancedExploratoryDataAnalysisB5:
             else:
                 print(f"Skipping GESD Test plot for {col} due to timeout.")
         
-        self.interpret_results("GESD Test Analysis", {
-            'image_paths': image_paths,
-            'results': results
-        }, table_name)
+        results['image_paths'] = image_paths
+        results['outlier_entities'] = outlier_entities
+        
+        self.interpret_results("GESD Test Analysis", results, table_name)
 
     def dixons_q_test_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - Dixon's Q Test Analysis"))
@@ -410,6 +585,7 @@ class AdvancedExploratoryDataAnalysisB5:
         
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         results = {}
+        outlier_entities = {}
         
         for col in numeric_cols:
             data = df[col].dropna().sort_values()
@@ -419,7 +595,7 @@ class AdvancedExploratoryDataAnalysisB5:
             def dixon_q_test(data, alpha=0.05):
                 n = len(data)
                 if n < 3 or n > 30:
-                    return None, None
+                    return None, None, [], []
                 
                 q_crit_table = {
                     3: 0.970, 4: 0.829, 5: 0.710, 6: 0.628, 7: 0.569, 8: 0.608, 9: 0.564, 10: 0.530,
@@ -440,10 +616,22 @@ class AdvancedExploratoryDataAnalysisB5:
                 outlier_low = q_low > q_crit
                 outlier_high = q_high > q_crit
                 
-                return (data[0] if outlier_low else None, data[-1] if outlier_high else None)
+                # Get indices of outliers
+                low_indices = [data.index[0]] if outlier_low else []
+                high_indices = [data.index[-1]] if outlier_high else []
+                
+                return (data[0] if outlier_low else None, 
+                        data[-1] if outlier_high else None,
+                        low_indices,
+                        high_indices)
             
-            low_outlier, high_outlier = dixon_q_test(data.values)
+            low_outlier, high_outlier, low_indices, high_indices = dixon_q_test(data)
             results[col] = {'low_outlier': low_outlier, 'high_outlier': high_outlier}
+            
+            # Find actual entities associated with outliers
+            all_outlier_indices = low_indices + high_indices
+            if all_outlier_indices:
+                outlier_entities[col] = self.identify_influential_entities(df, all_outlier_indices)
 
             def plot_dixon_q():
                 fig, ax = plt.subplots(figsize=self.calculate_figure_size())
@@ -468,10 +656,10 @@ class AdvancedExploratoryDataAnalysisB5:
             else:
                 print(f"Skipping Dixon's Q Test plot for {col} due to timeout.")
         
-        self.interpret_results("Dixon's Q Test Analysis", {
-            'image_paths': image_paths,
-            'results': results
-        }, table_name)
+        results['image_paths'] = image_paths
+        results['outlier_entities'] = outlier_entities
+        
+        self.interpret_results("Dixon's Q Test Analysis", results, table_name)
 
     def peirce_criterion_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - Peirce's Criterion Analysis"))
@@ -479,6 +667,7 @@ class AdvancedExploratoryDataAnalysisB5:
         
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         results = {}
+        outlier_entities = {}
         
         def peirce_criterion(data):
             n = len(data)
@@ -494,19 +683,24 @@ class AdvancedExploratoryDataAnalysisB5:
                 R = 1.58 + 0.2 * np.log10(n / 10)
             
             threshold = R * std
-            outliers = [x for x in data if abs(x - mean) > threshold]
+            outliers = np.where(abs(data - mean) > threshold)[0]
+            outlier_values = data[outliers]
             
-            return outliers
+            return outliers, outlier_values
         
         for col in numeric_cols:
-            data = df[col].dropna()
-            outliers = peirce_criterion(data.values)
-            results[col] = outliers
+            data = df[col].dropna().values
+            outlier_indices, outlier_values = peirce_criterion(data)
+            results[col] = outlier_values.tolist()
+            
+            # Find actual entities associated with outliers
+            if len(outlier_indices) > 0:
+                outlier_entities[col] = self.identify_influential_entities(df, outlier_indices)
 
             def plot_peirce():
                 fig, ax = plt.subplots(figsize=self.calculate_figure_size())
-                ax.plot(df.index, df[col], label='Original Data')
-                ax.scatter(df.index[df[col].isin(outliers)], outliers, color='red', label='Outliers')
+                ax.plot(np.arange(len(data)), data, label='Original Data')
+                ax.scatter(outlier_indices, outlier_values, color='red', label='Outliers')
                 ax.set_title(f"Peirce's Criterion Outliers - {col}")
                 ax.set_xlabel('Index')
                 ax.set_ylabel('Value')
@@ -523,10 +717,10 @@ class AdvancedExploratoryDataAnalysisB5:
             else:
                 print(f"Skipping Peirce's Criterion plot for {col} due to timeout.")
         
-        self.interpret_results("Peirce's Criterion Analysis", {
-            'image_paths': image_paths,
-            'results': results
-        }, table_name)
+        results['image_paths'] = image_paths
+        results['outlier_entities'] = outlier_entities
+        
+        self.interpret_results("Peirce's Criterion Analysis", results, table_name)
 
     def thompson_tau_test_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - Thompson Tau Test Analysis"))
@@ -534,6 +728,7 @@ class AdvancedExploratoryDataAnalysisB5:
         
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         results = {}
+        outlier_entities = {}
         
         def thompson_tau_test(data, alpha=0.05):
             n = len(data)
@@ -544,19 +739,24 @@ class AdvancedExploratoryDataAnalysisB5:
             tau = (t_value * (n - 1)) / (np.sqrt(n) * np.sqrt(n - 2 + t_value**2))
             
             delta = tau * std
-            outliers = [x for x in data if abs(x - mean) > delta]
+            outlier_indices = np.where(abs(data - mean) > delta)[0]
+            outlier_values = data[outlier_indices]
             
-            return outliers
+            return outlier_indices, outlier_values
         
         for col in numeric_cols:
-            data = df[col].dropna()
-            outliers = thompson_tau_test(data.values)
-            results[col] = outliers
+            data = df[col].dropna().values
+            outlier_indices, outlier_values = thompson_tau_test(data)
+            results[col] = outlier_values.tolist()
+            
+            # Find actual entities associated with outliers
+            if len(outlier_indices) > 0:
+                outlier_entities[col] = self.identify_influential_entities(df, outlier_indices)
 
             def plot_thompson_tau():
                 fig, ax = plt.subplots(figsize=self.calculate_figure_size())
-                ax.plot(df.index, df[col], label='Original Data')
-                ax.scatter(df.index[df[col].isin(outliers)], outliers, color='red', label='Outliers')
+                ax.plot(np.arange(len(data)), data, label='Original Data')
+                ax.scatter(outlier_indices, outlier_values, color='red', label='Outliers')
                 ax.set_title(f'Thompson Tau Test Outliers - {col}')
                 ax.set_xlabel('Index')
                 ax.set_ylabel('Value')
@@ -573,10 +773,10 @@ class AdvancedExploratoryDataAnalysisB5:
             else:
                 print(f"Skipping Thompson Tau Test plot for {col} due to timeout.")
         
-        self.interpret_results("Thompson Tau Test Analysis", {
-            'image_paths': image_paths,
-            'results': results
-        }, table_name)
+        results['image_paths'] = image_paths
+        results['outlier_entities'] = outlier_entities
+        
+        self.interpret_results("Thompson Tau Test Analysis", results, table_name)
 
     def control_charts_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - Control Charts Analysis (CUSUM, EWMA)"))
@@ -584,6 +784,7 @@ class AdvancedExploratoryDataAnalysisB5:
         
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         results = {}
+        out_of_control_entities = {}
         
         def cusum_chart(data, threshold=1, drift=0):
             cumsum = np.zeros(len(data))
@@ -610,6 +811,18 @@ class AdvancedExploratoryDataAnalysisB5:
             
             cusum, cusum_ucl = cusum_chart(data)
             ewma, ewma_ucl, ewma_lcl = ewma_chart(data)
+            
+            # Identify out-of-control points
+            cusum_out_indices = np.where(cusum > cusum_ucl)[0]
+            ewma_out_indices = np.where((ewma > ewma_ucl) | (ewma < ewma_lcl))[0]
+            
+            # Combine all out-of-control indices
+            all_out_indices = np.unique(np.concatenate([cusum_out_indices, ewma_out_indices]) if len(cusum_out_indices) > 0 and len(ewma_out_indices) > 0 else 
+                                        (cusum_out_indices if len(cusum_out_indices) > 0 else ewma_out_indices))
+            
+            # Find actual entities associated with out-of-control points
+            if len(all_out_indices) > 0:
+                out_of_control_entities[col] = self.identify_influential_entities(df, all_out_indices)
             
             def plot_control_charts():
                 fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=self.calculate_figure_size())
@@ -656,15 +869,17 @@ class AdvancedExploratoryDataAnalysisB5:
                 
                 results[col] = {
                     'cusum_out_of_control': np.sum(cusum > cusum_ucl),
-                    'ewma_out_of_control': np.sum((ewma > ewma_ucl) | (ewma < ewma_lcl))
+                    'ewma_out_of_control': np.sum((ewma > ewma_ucl) | (ewma < ewma_lcl)),
+                    'total_out_of_control': len(all_out_indices),
+                    'percentage_out_of_control': (len(all_out_indices) / len(data)) * 100
                 }
             else:
                 print(f"Skipping control charts for {col} due to timeout.")
         
-        self.interpret_results("Control Charts Analysis (CUSUM, EWMA)", {
-            'image_paths': image_paths,
-            'results': results
-        }, table_name)
+        results['image_paths'] = image_paths
+        results['out_of_control_entities'] = out_of_control_entities
+        
+        self.interpret_results("Control Charts Analysis (CUSUM, EWMA)", results, table_name)
 
     def kde_anomaly_detection_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - KDE Anomaly Detection Analysis"))
@@ -672,6 +887,7 @@ class AdvancedExploratoryDataAnalysisB5:
         
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         results = {}
+        anomaly_entities = {}
         
         for col in numeric_cols:
             data = df[col].dropna().values
@@ -680,8 +896,13 @@ class AdvancedExploratoryDataAnalysisB5:
             x_range = np.linspace(min(data), max(data), 1000)
             density = kde(x_range)
             
-            threshold = np.percentile(density, 5)  # Use 5th percentile as anomaly threshold
-            anomalies = data[kde(data) < threshold]
+            threshold = np.percentile(kde(data), 5)  # Use 5th percentile as anomaly threshold
+            anomaly_indices = np.where(kde(data) < threshold)[0]
+            anomalies = data[anomaly_indices]
+            
+            # Find actual entities associated with anomalies
+            if len(anomaly_indices) > 0:
+                anomaly_entities[col] = self.identify_influential_entities(df, anomaly_indices)
             
             def plot_kde_anomalies():
                 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=self.calculate_figure_size())
@@ -714,15 +935,16 @@ class AdvancedExploratoryDataAnalysisB5:
                 
                 results[col] = {
                     'anomalies_count': len(anomalies),
-                    'anomalies_percentage': (len(anomalies) / len(data)) * 100
+                    'anomalies_percentage': (len(anomalies) / len(data)) * 100,
+                    'anomaly_values': anomalies.tolist() if len(anomalies) <= 20 else f"{len(anomalies)} anomalies found"
                 }
             else:
                 print(f"Skipping KDE anomaly detection plot for {col} due to timeout.")
         
-        self.interpret_results("KDE Anomaly Detection Analysis", {
-            'image_paths': image_paths,
-            'results': results
-        }, table_name)
+        results['image_paths'] = image_paths
+        results['anomaly_entities'] = anomaly_entities
+        
+        self.interpret_results("KDE Anomaly Detection Analysis", results, table_name)
 
     def hotellings_t_squared_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - Hotelling's T-squared Analysis"))
@@ -759,7 +981,13 @@ class AdvancedExploratoryDataAnalysisB5:
         f_crit = stats.f.ppf(0.95, p, n-p)
         t_sq_crit = ((n-1)*p/(n-p)) * f_crit
         
-        outliers = X[t_sq > t_sq_crit]
+        outlier_indices = np.where(t_sq > t_sq_crit)[0]
+        outliers = X.iloc[outlier_indices]
+        
+        # Find actual entities associated with outliers
+        outlier_entities = {}
+        if len(outlier_indices) > 0:
+            outlier_entities = self.identify_influential_entities(df, outlier_indices)
         
         def plot_t_squared():
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=self.calculate_figure_size())
@@ -790,14 +1018,13 @@ class AdvancedExploratoryDataAnalysisB5:
             image_paths.append(img_path)
             
             results = {
+                'image_paths': image_paths,
                 'outliers_count': len(outliers),
-                'outliers_percentage': (len(outliers) / n) * 100
+                'outliers_percentage': (len(outliers) / n) * 100,
+                'outlier_entities': outlier_entities
             }
             
-            self.interpret_results("Hotelling's T-squared Analysis", {
-                'image_paths': image_paths,
-                'results': results
-            }, table_name)
+            self.interpret_results("Hotelling's T-squared Analysis", results, table_name)
         else:
             print("Skipping Hotelling's T-squared plot due to timeout.")
 
@@ -823,7 +1050,10 @@ class AdvancedExploratoryDataAnalysisB5:
             results[col] = {
                 'bp_mean': bp_mean,
                 'bp_median': bp_median,
-                'trimmed_means': dict(zip(trim_levels, trimmed_means))
+                'trimmed_means': dict(zip(trim_levels, trimmed_means)),
+                'mean': np.mean(data),
+                'median': np.median(data),
+                'std_dev': np.std(data)
             }
 
             def plot_breakdown_point():
@@ -850,10 +1080,9 @@ class AdvancedExploratoryDataAnalysisB5:
             else:
                 print(f"Skipping Breakdown Point plot for {col} due to timeout.")
         
-        self.interpret_results("Breakdown Point Analysis", {
-            'image_paths': image_paths,
-            'results': results
-        }, table_name)
+        results['image_paths'] = image_paths
+        
+        self.interpret_results("Breakdown Point Analysis", results, table_name)
 
     def chi_square_test_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - Chi-Square Test Analysis"))
@@ -872,7 +1101,10 @@ class AdvancedExploratoryDataAnalysisB5:
             results[col] = {
                 'chi2_statistic': chi2,
                 'p_value': p_value,
-                'degrees_of_freedom': len(observed) - 1
+                'degrees_of_freedom': len(observed) - 1,
+                'observed_counts': observed.to_dict(),
+                'expected_counts': expected.to_dict(),
+                'categories': observed.index.tolist()
             }
 
             def plot_chi_square():
@@ -900,10 +1132,9 @@ class AdvancedExploratoryDataAnalysisB5:
             else:
                 print(f"Skipping Chi-Square Test plot for {col} due to timeout.")
         
-        self.interpret_results("Chi-Square Test Analysis", {
-            'image_paths': image_paths,
-            'results': results
-        }, table_name)
+        results['image_paths'] = image_paths
+        
+        self.interpret_results("Chi-Square Test Analysis", results, table_name)
 
     def simple_thresholding_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - Simple Thresholding Analysis"))
@@ -911,6 +1142,7 @@ class AdvancedExploratoryDataAnalysisB5:
         
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         results = {}
+        outlier_entities = {}
         
         for col in numeric_cols:
             data = df[col].dropna()
@@ -923,12 +1155,18 @@ class AdvancedExploratoryDataAnalysisB5:
             upper_bound = q3 + 1.5 * iqr
             
             outliers = data[(data < lower_bound) | (data > upper_bound)]
+            outlier_indices = np.where((data < lower_bound) | (data > upper_bound))[0]
+            
+            # Find actual entities associated with outliers
+            if len(outlier_indices) > 0:
+                outlier_entities[col] = self.identify_influential_entities(df, outlier_indices)
             
             results[col] = {
                 'lower_bound': lower_bound,
                 'upper_bound': upper_bound,
                 'outliers_count': len(outliers),
-                'outliers_percentage': (len(outliers) / len(data)) * 100
+                'outliers_percentage': (len(outliers) / len(data)) * 100,
+                'outlier_values': outliers.tolist() if len(outliers) <= 20 else f"{len(outliers)} outliers found"
             }
 
             def plot_simple_thresholding():
@@ -950,10 +1188,10 @@ class AdvancedExploratoryDataAnalysisB5:
             else:
                 print(f"Skipping Simple Thresholding plot for {col} due to timeout.")
         
-        self.interpret_results("Simple Thresholding Analysis", {
-            'image_paths': image_paths,
-            'results': results
-        }, table_name)
+        results['image_paths'] = image_paths
+        results['outlier_entities'] = outlier_entities
+        
+        self.interpret_results("Simple Thresholding Analysis", results, table_name)
 
     def lilliefors_test_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - Lilliefors Test Analysis"))
@@ -969,7 +1207,12 @@ class AdvancedExploratoryDataAnalysisB5:
             
             results[col] = {
                 'test_statistic': statistic,
-                'p_value': p_value
+                'p_value': p_value,
+                'is_normal': p_value > 0.05,
+                'mean': np.mean(data),
+                'std_dev': np.std(data),
+                'skewness': stats.skew(data),
+                'kurtosis': stats.kurtosis(data)
             }
 
             def plot_lilliefors():
@@ -988,10 +1231,9 @@ class AdvancedExploratoryDataAnalysisB5:
             else:
                 print(f"Skipping Lilliefors Test plot for {col} due to timeout.")
         
-        self.interpret_results("Lilliefors Test Analysis", {
-            'image_paths': image_paths,
-            'results': results
-        }, table_name)
+        results['image_paths'] = image_paths
+        
+        self.interpret_results("Lilliefors Test Analysis", results, table_name)
 
     def jarque_bera_test_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - Jarque-Bera Test Analysis"))
@@ -1009,7 +1251,10 @@ class AdvancedExploratoryDataAnalysisB5:
                 'test_statistic': statistic,
                 'p_value': p_value,
                 'skewness': skew,
-                'kurtosis': kurtosis
+                'kurtosis': kurtosis,
+                'is_normal': p_value > 0.05,
+                'mean': np.mean(data),
+                'std_dev': np.std(data)
             }
 
             def plot_jarque_bera():
@@ -1033,25 +1278,9 @@ class AdvancedExploratoryDataAnalysisB5:
             else:
                 print(f"Skipping Jarque-Bera Test plot for {col} due to timeout.")
         
-        self.interpret_results("Jarque-Bera Test Analysis", {
-            'image_paths': image_paths,
-            'results': results
-        }, table_name)
-
-    def save_results(self, analysis_type, results):
-        if not self.settings.save_results_to_txt:
-            return  # Skip saving if the option is disabled
-
-        results_file = os.path.join(self.output_folder, f"{analysis_type.lower().replace(' ', '_')}_results.txt")
-        with open(results_file, "w", encoding='utf-8') as f:
-            f.write(f"Results for {analysis_type}:\n")
-            if isinstance(results, dict):
-                for key, value in results.items():
-                    if key != 'image_paths':
-                        f.write(f"{key}: {value}\n")
-            else:
-                f.write(str(results))
-        print(success(f"Results saved as txt file: {results_file}"))
+        results['image_paths'] = image_paths
+        
+        self.interpret_results("Jarque-Bera Test Analysis", results, table_name)
 
     def interpret_results(self, analysis_type, results, table_name):
         technique_info = get_technique_info(analysis_type)
@@ -1079,12 +1308,18 @@ class AdvancedExploratoryDataAnalysisB5:
         num_visualizations = len(results.get('image_paths', []))
         results_str += f"\n\nNumber of visualizations created: {num_visualizations}"
 
-        # Save the results
-        self.save_results(analysis_type, results)
+        # Add entity information
+        entity_description = self.format_entity_description()
 
         common_prompt = f"""
         Analysis type: {analysis_type}
         Table name: {table_name}
+        
+        Database Description:
+        {self.database_description}
+        
+        Entities in the data:
+        {entity_description}
 
         Technique Context:
         {technique_info['context']}
@@ -1102,6 +1337,8 @@ class AdvancedExploratoryDataAnalysisB5:
         {common_prompt}
 
         Please provide a thorough interpretation of these results, highlighting noteworthy patterns, anomalies, or insights. Focus on aspects that would be valuable for business decisions and operational improvements. Always provide specific numbers and percentages.
+        
+        When referring to entities in the data (like teams, products, regions, etc.), use their actual names from the data rather than generic terms like "Team A" or "Cluster 1".
 
         Structure your response in the following format:
 
@@ -1128,7 +1365,11 @@ class AdvancedExploratoryDataAnalysisB5:
         {common_prompt}
 
         Please provide a thorough interpretation of these results, highlighting noteworthy patterns, anomalies, or insights. Focus on the most important aspects that would be valuable for business operations and decision-making. Always provide specific numbers and percentages when discussing findings.
+        
+        When referring to entities in the data (like teams, products, regions, etc.), use their actual names from the data rather than generic terms like "Team A" or "Cluster 1".
+        
         If some data appears to be missing or incomplete, work with the available information without mentioning the limitations. Your goal is to extract as much insight as possible from the given data.
+        
         Structure your response in the following format:
         1. Analysis:
         [Provide a detailed description of the analysis performed, including specific metrics and their values]
@@ -1138,12 +1379,11 @@ class AdvancedExploratoryDataAnalysisB5:
         [Discuss the potential impact of these findings on business operations and decision-making]
         4. Operational Recommendations:
         [Suggest concrete operational steps or changes based on these results. Focus on actionable recommendations that can improve business processes, efficiency, or outcomes. Avoid recommending further data analysis.]
+        
         Ensure your interpretation is concise yet comprehensive, focusing on actionable insights derived from the data that can be directly applied to business operations.
 
         Business Analysis:
         """
-
-        
 
         supervisor_analysis = self.supervisor_erag_api.chat([
             {"role": "system", "content": "You are a senior business analyst providing insights based on data analysis results. Provide a concise yet comprehensive business analysis."},
@@ -1158,13 +1398,23 @@ class AdvancedExploratoryDataAnalysisB5:
         {supervisor_analysis.strip()}
         """
 
-        
-
-
         print(success(f"Combined Interpretation for {analysis_type}:"))
         print(combined_interpretation.strip())
 
         self.text_output += f"\n{combined_interpretation.strip()}\n\n"
+        
+        # Save individual interpretation to file
+        interpretation_file = os.path.join(self.output_folder, f"{analysis_type.lower().replace(' ', '_')}_interpretation.txt")
+        with open(interpretation_file, "w", encoding='utf-8') as f:
+            f.write(combined_interpretation.strip())
+        print(success(f"Interpretation saved to file: {interpretation_file}"))
+        
+        # Save raw results to file
+        results_file = os.path.join(self.output_folder, f"{analysis_type.lower().replace(' ', '_')}_results.txt")
+        with open(results_file, "w", encoding='utf-8') as f:
+            f.write(f"Results for {analysis_type}:\n\n")
+            f.write(results_str)
+        print(success(f"Results saved to file: {results_file}"))
 
         # Handle images for the PDF report
         image_data = []
@@ -1203,17 +1453,17 @@ class AdvancedExploratoryDataAnalysisB5:
         # Update self.image_data for the PDF report
         self.image_data.extend(image_data)
 
-        
     def save_text_output(self):
         output_file = os.path.join(self.output_folder, "axda_b5_results.txt")
         with open(output_file, "w", encoding='utf-8') as f:
             f.write(self.text_output)
 
-    
-
-    
     def generate_pdf_report(self):
         report_title = f"Advanced Exploratory Data Analysis (Batch 5) Report for {self.table_name}"
+        
+        # Add database description to the report
+        if self.database_description:
+            report_title += f"\nDatabase Description: {self.database_description}"
         
         # Ensure all image data is in the correct format
         formatted_image_data = []

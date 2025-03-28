@@ -3,6 +3,8 @@ import os
 import sqlite3
 import threading
 import time
+import signal
+import sys
 from functools import wraps
 
 # Third-party imports
@@ -48,6 +50,34 @@ class ExploratoryDataAnalysis:
         self.image_data = []
         self.pdf_generator = None
         self.settings = settings
+        self.database_description = ""
+        self.paused = False
+        self.setup_signal_handler()
+
+    def setup_signal_handler(self):
+        """Set up signal handler for Ctrl+C"""
+        signal.signal(signal.SIGINT, self.handle_signal)
+
+    def handle_signal(self, sig, frame):
+        """Handle Ctrl+C by pausing execution"""
+        if not self.paused:
+            self.paused = True
+            print(warning("\nScript paused. Press Enter to continue or Ctrl+C again to exit..."))
+            try:
+                user_input = input()
+                self.paused = False
+                print(info("Resuming execution..."))
+            except KeyboardInterrupt:
+                print(error("\nExiting script..."))
+                sys.exit(0)
+        else:
+            print(error("\nExiting script..."))
+            sys.exit(0)
+
+    def check_if_paused(self):
+        """Check if execution is paused and wait for Enter if needed"""
+        while self.paused:
+            time.sleep(0.1)  # Small sleep to prevent CPU hogging
 
     def calculate_figure_size(self, aspect_ratio=16/9):
         max_width = int(np.sqrt(self.max_pixels * aspect_ratio))
@@ -84,7 +114,15 @@ class ExploratoryDataAnalysis:
     def generate_plot(self, plot_function, *args, **kwargs):
         return plot_function(*args, **kwargs)
 
+    def prompt_for_database_description(self):
+        """Ask the user for a description of the database"""
+        print(info("Please provide a description of the database. This will help the AI models provide better insights."))
+        print(info("Describe the purpose, main tables, key data points, and any other relevant information:"))
+        self.database_description = input("> ")
+        print(success(f"Database description received: {self.database_description}"))
+
     def run(self):
+        self.prompt_for_database_description()
         print(info(f"Starting Exploratory Data Analysis on {self.db_path}"))
         tables = self.get_tables()
         for table in tables:
@@ -111,6 +149,7 @@ class ExploratoryDataAnalysis:
         self.text_output += f"\nAnalyzing table: {table_name}\n"
         with sqlite3.connect(self.db_path) as conn:
             df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
+            print(info(f"Loaded full dataset with {len(df)} rows and {len(df.columns)} columns"))
 
         analysis_methods = [
             self.overall_table_analysis,
@@ -127,20 +166,32 @@ class ExploratoryDataAnalysis:
 
         for method in analysis_methods:
             try:
+                # Check if execution is paused
+                self.check_if_paused()
                 method(df, table_name)
             except Exception as e:
                 error_message = f"An error occurred during {method.__name__}: {str(e)}"
                 print(error(error_message))
                 self.text_output += f"\n{error_message}\n"
                 self.pdf_content.append((method.__name__, [], error_message))
+                
+                # Write error to method-specific output file
+                method_name = method.__name__
+                with open(os.path.join(self.output_folder, f"{method_name}_results.txt"), "w", encoding='utf-8') as f:
+                    f.write(error_message)
 
     def overall_table_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - Overall Table Analysis"))
+        
+        # Extract actual table data for context
+        column_types = df.dtypes.value_counts()
+        column_type_names = [f"{index} ({count} columns)" for index, count in column_types.items()]
         
         results = {
             "Total Rows": len(df),
             "Total Columns": len(df.columns),
             "Column Types": df.dtypes.value_counts().to_dict(),
+            "Column Type Names": column_type_names,
             "Memory Usage": df.memory_usage(deep=True).sum() / 1024**2,  # in MB
             "Column Names": df.columns.tolist(),
             "Missing Values": df.isnull().sum().to_dict(),
@@ -193,16 +244,33 @@ class ExploratoryDataAnalysis:
         self.interpret_results("Overall Table Analysis", results, table_name)
         self.technique_counter += 1
 
-
     def statistical_analysis(self, df, table_name):
         print(info(f"Performing test {self.technique_counter}/{self.total_techniques} - Statistical Analysis"))
 
         numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns
-        results = df[numeric_columns].describe().to_dict()
-
+        
+        # Extract actual column statistics for better context
+        results = {
+            "table_overview": {
+                "total_rows": len(df),
+                "numeric_columns": len(numeric_columns),
+                "column_names": numeric_columns.tolist()
+            }
+        }
+        
+        # Include descriptive statistics for each column
         for col in numeric_columns:
-            results[col]['skewness'] = df[col].skew()
-            results[col]['kurtosis'] = df[col].kurtosis()
+            results[col] = {
+                'mean': df[col].mean(),
+                'median': df[col].median(),
+                'std': df[col].std(),
+                'min': df[col].min(),
+                'max': df[col].max(),
+                'skewness': df[col].skew(),
+                'kurtosis': df[col].kurtosis(),
+                'missing_values': df[col].isna().sum(),
+                'missing_percentage': (df[col].isna().sum() / len(df)) * 100
+            }
 
         # Generate plots for each column
         image_paths = []
@@ -213,7 +281,6 @@ class ExploratoryDataAnalysis:
             std_dev = df[col].std()
             min_val = df[col].min()
             max_val = df[col].max()
-            
             
             fig, ax = plt.subplots(figsize=self.calculate_figure_size())
             
@@ -241,7 +308,8 @@ class ExploratoryDataAnalysis:
             plt.close(fig)
             
             image_paths.append((f"Statistical Measures for {col}", img_path))
-        results['image_paths'] = [("Statistical Measures", img_path)]
+        
+        results['image_paths'] = image_paths
         
         self.interpret_results("Statistical Analysis", results, table_name)
         self.technique_counter += 1
@@ -255,6 +323,24 @@ class ExploratoryDataAnalysis:
         
         if len(numerical_columns) > 1:
             correlation_matrix = df[numerical_columns].corr()
+            
+            # Extract actual correlation pairs for context
+            top_correlations = []
+            for i in range(len(numerical_columns)):
+                for j in range(i+1, len(numerical_columns)):
+                    col1 = numerical_columns[i]
+                    col2 = numerical_columns[j]
+                    corr_value = correlation_matrix.loc[col1, col2]
+                    if abs(corr_value) > 0.5:  # Only include significant correlations
+                        top_correlations.append({
+                            'column_1': col1,
+                            'column_2': col2,
+                            'correlation': corr_value
+                        })
+            
+            # Sort by absolute correlation value
+            top_correlations = sorted(top_correlations, key=lambda x: abs(x['correlation']), reverse=True)
+            results['significant_correlations'] = top_correlations
             
             # Function to create correlation heatmap
             def plot_correlation_heatmap(corr_matrix, title):
@@ -325,8 +411,15 @@ class ExploratoryDataAnalysis:
             top_positive = correlations.nlargest(5)
             top_negative = correlations.nsmallest(5)
             
-            results['top_positive_correlations'] = top_positive.to_dict()
-            results['top_negative_correlations'] = top_negative.to_dict()
+            results['top_positive_correlations'] = [
+                {"pair": f"{idx[0]} ↔ {idx[1]}", "value": val}
+                for idx, val in top_positive.items()
+            ]
+            
+            results['top_negative_correlations'] = [
+                {"pair": f"{idx[0]} ↔ {idx[1]}", "value": val}
+                for idx, val in top_negative.items()
+            ]
             
         else:
             results = "N/A - Not enough numerical features for correlation analysis"
@@ -343,24 +436,42 @@ class ExploratoryDataAnalysis:
         results = {}
         
         if len(categorical_columns) > 0:
+            # Include actual category names and values
             for col in categorical_columns:
                 value_counts = df[col].value_counts()
-                top_9 = value_counts.nlargest(9)
-                other = value_counts.iloc[9:].sum() if len(value_counts) > 9 else 0
-                
-                if other > 0:
-                    top_10 = top_9.append(pd.Series({'Other': other}))
+                # Get actual names of categories (not coded as Alpha, Beta, etc.)
+                if len(value_counts) > 10:
+                    top_9 = value_counts.nlargest(9)
+                    other = value_counts.iloc[9:].sum()
+                    categories = top_9.index.tolist()
+                    categories.append('Other')
+                    counts = top_9.values.tolist()
+                    counts.append(other)
                 else:
-                    top_10 = value_counts.nlargest(10)
+                    categories = value_counts.index.tolist()
+                    counts = value_counts.values.tolist()
                 
-                results[col] = top_10.to_dict()
+                results[col] = {
+                    'total_categories': len(value_counts),
+                    'top_categories': [
+                        {"name": cat, "count": count, "percentage": (count/len(df))*100} 
+                        for cat, count in zip(categories, counts)
+                    ],
+                    'null_count': df[col].isna().sum(),
+                    'null_percentage': (df[col].isna().sum() / len(df)) * 100
+                }
                 
                 def plot_categorical_distribution():
+                    if len(value_counts) > 10:
+                        top_10 = pd.Series(counts, index=categories)
+                    else:
+                        top_10 = value_counts.nlargest(10)
+                        
                     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
                     
                     # Bar plot
                     sns.barplot(x=top_10.index, y=top_10.values, ax=ax1, palette='Set3')
-                    ax1.set_title(f'Top 10 Categories in {col}')
+                    ax1.set_title(f'Top Categories in {col}')
                     ax1.set_xlabel(col)
                     ax1.set_ylabel('Count')
                     ax1.tick_params(axis='x', rotation=45)
@@ -369,7 +480,7 @@ class ExploratoryDataAnalysis:
                     
                     # Pie chart
                     ax2.pie(top_10.values, labels=top_10.index, autopct='%1.1f%%', startangle=90)
-                    ax2.set_title(f'Top 10 Categories Distribution in {col}')
+                    ax2.set_title(f'Top Categories Distribution in {col}')
                     
                     plt.tight_layout()
                     return fig, (ax1, ax2)
@@ -397,6 +508,32 @@ class ExploratoryDataAnalysis:
         results = {}
         
         for col in numerical_columns:
+            # Calculate distribution statistics with actual column name
+            col_data = df[col].dropna()
+            distribution_stats = {
+                'mean': col_data.mean(),
+                'median': col_data.median(),
+                'std': col_data.std(),
+                'skewness': col_data.skew(),
+                'kurtosis': col_data.kurtosis()
+            }
+            
+            # Run normality test
+            try:
+                anderson_result = anderson(col_data)
+                distribution_stats['anderson_darling_statistic'] = anderson_result.statistic
+                distribution_stats['anderson_critical_values'] = anderson_result.critical_values.tolist()
+                distribution_stats['anderson_significance_levels'] = [15.0, 10.0, 5.0, 2.5, 1.0]
+                # Determine if normally distributed
+                if anderson_result.statistic < anderson_result.critical_values[2]:  # Using 5% significance level
+                    distribution_stats['is_normal'] = True
+                else:
+                    distribution_stats['is_normal'] = False
+            except:
+                distribution_stats['anderson_test'] = "Failed to compute"
+                
+            results[col] = distribution_stats
+            
             def plot_distribution():
                 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
                 
@@ -439,10 +576,38 @@ class ExploratoryDataAnalysis:
             lower_bound = Q1 - 1.5 * IQR
             upper_bound = Q3 + 1.5 * IQR
             outliers = df[(df[col] < lower_bound) | (df[col] > upper_bound)][col]
+            
+            # Get actual outlier values (not just statistics)
+            if len(outliers) > 0:
+                top_outliers = outliers.nlargest(min(5, len(outliers)))
+                bottom_outliers = outliers.nsmallest(min(5, len(outliers)))
+                
+                outlier_values = {
+                    'top_high_outliers': [
+                        {"value": float(value), "z_score": float(zscore(df[col])[i])}
+                        for i, value in enumerate(top_outliers)
+                    ],
+                    'top_low_outliers': [
+                        {"value": float(value), "z_score": float(zscore(df[col])[i])}
+                        for i, value in enumerate(bottom_outliers)
+                    ]
+                }
+            else:
+                outlier_values = {'top_high_outliers': [], 'top_low_outliers': []}
+            
             results[col] = {
                 'count': len(outliers),
                 'percentage': (len(outliers) / len(df)) * 100,
-                'range': (lower_bound, upper_bound)
+                'range': (float(lower_bound), float(upper_bound)),
+                'outlier_values': outlier_values,
+                'summary': {
+                    'Q1': float(Q1),
+                    'median': float(df[col].median()),
+                    'Q3': float(Q3),
+                    'IQR': float(IQR),
+                    'min_non_outlier': float(df[(df[col] >= lower_bound) & (df[col] <= upper_bound)][col].min()) if len(df[(df[col] >= lower_bound) & (df[col] <= upper_bound)]) > 0 else None,
+                    'max_non_outlier': float(df[(df[col] >= lower_bound) & (df[col] <= upper_bound)][col].max()) if len(df[(df[col] >= lower_bound) & (df[col] <= upper_bound)]) > 0 else None
+                }
             }
             
             def plot_boxplot():
@@ -488,7 +653,35 @@ class ExploratoryDataAnalysis:
             date_col = date_columns[0]  # Use the first identified date column
             df = df.sort_values(date_col)  # Sort by date
             
+            # Extract time series insights
+            results['time_series_overview'] = {
+                'date_column': date_col,
+                'start_date': df[date_col].min().strftime('%Y-%m-%d') if hasattr(df[date_col].min(), 'strftime') else str(df[date_col].min()),
+                'end_date': df[date_col].max().strftime('%Y-%m-%d') if hasattr(df[date_col].max(), 'strftime') else str(df[date_col].max()),
+                'time_span_days': (df[date_col].max() - df[date_col].min()).days if hasattr(df[date_col].max(), 'strftime') else None,
+                'number_of_periods': len(df),
+                'numerical_columns': numerical_columns.tolist()
+            }
+            
             for num_col in numerical_columns:
+                # Calculate time series metrics
+                column_metrics = {
+                    'trend': None,  # Will be filled by AI interpretation
+                    'min_value': float(df[num_col].min()),
+                    'max_value': float(df[num_col].max()),
+                    'mean': float(df[num_col].mean()),
+                    'std_dev': float(df[num_col].std())
+                }
+                
+                # Add growth metrics if possible
+                if len(df) > 1:
+                    first_value = df[num_col].iloc[0]
+                    last_value = df[num_col].iloc[-1]
+                    if first_value != 0:
+                        column_metrics['overall_growth_pct'] = ((last_value - first_value) / first_value) * 100
+                    
+                results[num_col] = column_metrics
+                
                 def plot_time_series():
                     fig, ax = plt.subplots(figsize=self.calculate_figure_size())
                     ax.plot(df[date_col], df[num_col])
@@ -539,7 +732,12 @@ class ExploratoryDataAnalysis:
                 'importance': model.feature_importances_
             }).sort_values('importance', ascending=False)
             
-            results['feature_importance'] = feature_importance.to_dict()
+            # Include actual feature names and importance scores
+            results['target_variable'] = numerical_columns[-1]
+            results['features_ranked'] = [
+                {"feature": row['feature'], "importance": row['importance']} 
+                for _, row in feature_importance.iterrows()
+            ]
             
             def plot_feature_importance():
                 fig, ax = plt.subplots(figsize=self.calculate_figure_size())
@@ -577,8 +775,24 @@ class ExploratoryDataAnalysis:
             explained_variance_ratio = pca.explained_variance_ratio_
             cumulative_variance_ratio = np.cumsum(explained_variance_ratio)
             
-            results['explained_variance_ratio'] = explained_variance_ratio.tolist()
-            results['cumulative_variance_ratio'] = cumulative_variance_ratio.tolist()
+            # Include actual variance explained by components
+            results['total_components'] = len(explained_variance_ratio)
+            results['explained_variance_by_component'] = [
+                {"component": f"PC{i+1}", "variance_explained": var, "cumulative_variance": cum_var}
+                for i, (var, cum_var) in enumerate(zip(explained_variance_ratio, cumulative_variance_ratio))
+            ]
+            
+            # Calculate number of components for 80% and 90% variance
+            components_80pct = next((i+1 for i, cum_var in enumerate(cumulative_variance_ratio) if cum_var >= 0.8), len(cumulative_variance_ratio))
+            components_90pct = next((i+1 for i, cum_var in enumerate(cumulative_variance_ratio) if cum_var >= 0.9), len(cumulative_variance_ratio))
+            
+            results['components_for_80pct_variance'] = components_80pct
+            results['components_for_90pct_variance'] = components_90pct
+            results['dimensionality_reduction_potential'] = {
+                'original_dimensions': len(numerical_columns),
+                'recommended_dimensions': components_80pct,
+                'reduction_percentage': ((len(numerical_columns) - components_80pct) / len(numerical_columns)) * 100
+            }
             
             def plot_pca():
                 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(self.calculate_figure_size()[0]*2, self.calculate_figure_size()[1]))
@@ -637,6 +851,38 @@ class ExploratoryDataAnalysis:
             # Perform K-means clustering with optimal number of clusters
             kmeans = KMeans(n_clusters=elbow, random_state=42)
             cluster_labels = kmeans.fit_predict(X_scaled)
+            
+            # Analyze clusters
+            df_with_clusters = df.copy()
+            df_with_clusters['cluster'] = cluster_labels
+            
+            # Get actual descriptions of each cluster
+            cluster_profiles = []
+            for cluster_id in range(elbow):
+                cluster_data = df_with_clusters[df_with_clusters['cluster'] == cluster_id]
+                
+                cluster_profile = {
+                    'cluster_id': cluster_id,
+                    'size': len(cluster_data),
+                    'percentage': (len(cluster_data) / len(df)) * 100,
+                    'feature_means': {}
+                }
+                
+                # Calculate mean for each feature in this cluster
+                for col in numerical_columns:
+                    cluster_mean = cluster_data[col].mean()
+                    overall_mean = df[col].mean()
+                    difference_pct = ((cluster_mean - overall_mean) / overall_mean) * 100 if overall_mean != 0 else 0
+                    
+                    cluster_profile['feature_means'][col] = {
+                        'cluster_mean': float(cluster_mean),
+                        'overall_mean': float(overall_mean),
+                        'difference_pct': float(difference_pct)
+                    }
+                
+                cluster_profiles.append(cluster_profile)
+            
+            results['cluster_profiles'] = cluster_profiles
             
             def plot_clusters():
                 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(self.calculate_figure_size()[0]*2, self.calculate_figure_size()[1]))
@@ -719,6 +965,7 @@ class ExploratoryDataAnalysis:
         common_prompt = f"""
         Analysis type: {analysis_type}
         Table name: {table_name}
+        Database description: {self.database_description}
 
         Technique Context:
         {technique_info['context']}
@@ -736,6 +983,8 @@ class ExploratoryDataAnalysis:
         {common_prompt}
 
         Please provide a thorough interpretation of these results, highlighting noteworthy patterns, anomalies, or insights. Focus on aspects that would be valuable for business decisions and operational improvements. Always provide specific numbers and percentages.
+
+        Use actual names and values from the data instead of generic references. For example, say "Team George" instead of "Team Alpha", "Product XYZ" instead of "Product Category 1", etc.
 
         Structure your response in the following format:
 
@@ -762,7 +1011,11 @@ class ExploratoryDataAnalysis:
         {common_prompt}
 
         Please provide a thorough interpretation of these results, highlighting noteworthy patterns, anomalies, or insights. Focus on the most important aspects that would be valuable for business operations and decision-making. Always provide specific numbers and percentages when discussing findings.
+        
+        Use actual names and values from the data instead of generic references. For example, use "Team George" instead of "Team Alpha", "Product XYZ" instead of "Product Category 1", etc.
+        
         If some data appears to be missing or incomplete, work with the available information without mentioning the limitations. Your goal is to extract as much insight as possible from the given data.
+        
         Structure your response in the following format:
         1. Analysis:
         [Provide a detailed description of the analysis performed, including specific metrics and their values]
@@ -772,12 +1025,11 @@ class ExploratoryDataAnalysis:
         [Discuss the potential impact of these findings on business operations and decision-making]
         4. Operational Recommendations:
         [Suggest concrete operational steps or changes based on these results. Focus on actionable recommendations that can improve business processes, efficiency, or outcomes. Avoid recommending further data analysis.]
+        
         Ensure your interpretation is concise yet comprehensive, focusing on actionable insights derived from the data that can be directly applied to business operations.
 
         Business Analysis:
         """
-
-        
 
         supervisor_analysis = self.supervisor_erag_api.chat([
             {"role": "system", "content": "You are a senior business analyst providing insights based on data analysis results. Provide a concise yet comprehensive business analysis."},
@@ -792,13 +1044,16 @@ class ExploratoryDataAnalysis:
         {supervisor_analysis.strip()}
         """
 
-        
-
-
         print(success(f"Combined Interpretation for {analysis_type}:"))
         print(combined_interpretation.strip())
 
         self.text_output += f"\n{combined_interpretation.strip()}\n\n"
+
+        # Save individual interpretation to file
+        interpretation_file = os.path.join(self.output_folder, f"{analysis_type.lower().replace(' ', '_')}_interpretation.txt")
+        with open(interpretation_file, "w", encoding='utf-8') as f:
+            f.write(combined_interpretation.strip())
+        print(success(f"Interpretation saved to file: {interpretation_file}"))
 
         # Handle images for the PDF report
         image_data = []
