@@ -2103,11 +2103,11 @@ class ERAGGUI:
             # Create separate EragAPI instances for worker and supervisor models
             worker_erag_api = create_erag_api(api_type, worker_model)
             
-            # Only create supervisor API if a different model is selected 
-            if supervisor_model and supervisor_model != worker_model:
+            # Always create supervisor API if a model is selected
+            if supervisor_model:
                 supervisor_erag_api = create_erag_api(api_type, supervisor_model)
             else:
-                # If same model or no supervisor, use None which will disable supervisor features
+                # Only if no supervisor model selected, set to None
                 supervisor_erag_api = None
             
             # Create and run ChecklistDocumentor with both APIs
