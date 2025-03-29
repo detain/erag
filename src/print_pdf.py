@@ -13,9 +13,9 @@ from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
 from reportlab.platypus.paragraph import ParaLines
 
-# Define RGB values for custom colors
-DARK_BLUE_RGB = (34/255, 34/255, 59/255)
-MEDIUM_BLUE_RGB = (43/255, 116/255, 238/255)
+# Define RGB values for custom colors - using more subtle blues
+DARK_BLUE_RGB = (44/255, 62/255, 80/255)      # More muted dark blue
+MEDIUM_BLUE_RGB = (52/255, 73/255, 94/255)    # More muted medium blue
 
 class PDFReportGenerator:
     def __init__(self, output_folder, llm_name, project_name):
@@ -58,9 +58,12 @@ class PDFReportGenerator:
 
         # Main content
         for i, (analysis_type, image_paths, interpretation) in enumerate(pdf_content):
-            # Add section numbering
-            elements.append(Paragraph(f"{i+1}. {analysis_type}", self.styles['Heading1']))
-            elements.extend(self._text_to_reportlab(interpretation))
+            # Add section numbering with smaller heading
+            elements.append(Paragraph(f"{i+1}. {analysis_type}", self.styles['ControlTitle']))
+            
+            # Process interpretation text, ensuring we don't re-add the title
+            processed_content = self._text_to_reportlab(interpretation, skip_title=True, control_title=analysis_type)
+            elements.extend(processed_content)
 
             # Add images for this analysis type
             for description, img_path in image_paths:
@@ -96,63 +99,88 @@ class PDFReportGenerator:
         styles['Title'].spaceBefore = 12
         styles['Title'].leading = 30
 
-        styles['Heading1'].fontSize = 18
+        # Reduce size and make color more subtle for all headings
+        styles['Heading1'].fontSize = 14  # Reduced from 18
         styles['Heading1'].alignment = TA_JUSTIFY
-        styles['Heading1'].spaceAfter = 12
+        styles['Heading1'].spaceAfter = 10
         styles['Heading1'].spaceBefore = 8
         styles['Heading1'].textColor = colors.Color(*MEDIUM_BLUE_RGB)
 
+        # Add a custom style for control titles (smaller than Heading1)
+        styles.add(ParagraphStyle(
+            name='ControlTitle',
+            parent=styles['Heading1'],
+            fontSize=12,  # Smaller than standard headings
+            textColor=colors.Color(*DARK_BLUE_RGB),
+            spaceBefore=8,
+            spaceAfter=8,
+            fontName='Helvetica-Bold'
+        ))
+
         # Modify or add Heading2 style
         if 'Heading2' in styles:
-            styles['Heading2'].fontSize = 16
+            styles['Heading2'].fontSize = 12  # Reduced from 16
             styles['Heading2'].textColor = colors.Color(*DARK_BLUE_RGB)
-            styles['Heading2'].spaceBefore = 8
-            styles['Heading2'].spaceAfter = 6
+            styles['Heading2'].spaceBefore = 6
+            styles['Heading2'].spaceAfter = 4
         else:
             styles.add(ParagraphStyle(
                 name='Heading2',
                 parent=styles['Heading1'],
-                fontSize=16,
+                fontSize=12,
                 textColor=colors.Color(*DARK_BLUE_RGB),
-                spaceBefore=8,
-                spaceAfter=6
+                spaceBefore=6,
+                spaceAfter=4
             ))
         
         # Modify or add Heading3 style
         if 'Heading3' in styles:
-            styles['Heading3'].fontSize = 14
-            styles['Heading3'].textColor = colors.Color(*DARK_BLUE_RGB, 0.8)
-            styles['Heading3'].spaceBefore = 6
-            styles['Heading3'].spaceAfter = 4
+            styles['Heading3'].fontSize = 11  # Reduced from 14
+            styles['Heading3'].textColor = colors.black
+            styles['Heading3'].spaceBefore = 5
+            styles['Heading3'].spaceAfter = 3
         else:
             styles.add(ParagraphStyle(
                 name='Heading3',
                 parent=styles['Heading2'],
-                fontSize=14,
-                textColor=colors.Color(*DARK_BLUE_RGB, 0.8),
-                spaceBefore=6,
-                spaceAfter=4
+                fontSize=11,
+                textColor=colors.black,
+                spaceBefore=5,
+                spaceAfter=3
             ))
 
         # Modify or add Heading4 style
         if 'Heading4' in styles:
-            styles['Heading4'].fontSize = 12
+            styles['Heading4'].fontSize = 10  # Reduced from 12
             styles['Heading4'].fontName = 'Helvetica-Bold'
             styles['Heading4'].textColor = colors.black
-            styles['Heading4'].spaceBefore = 4
+            styles['Heading4'].spaceBefore = 3
             styles['Heading4'].spaceAfter = 2
-            styles['Heading4'].leading = 14
+            styles['Heading4'].leading = 12
         else:
             styles.add(ParagraphStyle(
                 name='Heading4',
                 parent=styles['Heading3'],
-                fontSize=12,
+                fontSize=10,
                 fontName='Helvetica-Bold',
                 textColor=colors.black,
-                spaceBefore=4,
+                spaceBefore=3,
                 spaceAfter=2,
-                leading=14
+                leading=12
             ))
+
+        # Add a style for supervisor comments - looking for // instead of >>>
+        styles.add(ParagraphStyle(
+            name='SupervisorComment',
+            parent=styles['Normal'],
+            fontSize=10,
+            fontName='Helvetica-Oblique',
+            textColor=colors.black,
+            leftIndent=10,
+            spaceBefore=4,
+            spaceAfter=4,
+            leading=14  # Better line spacing for longer expert comments
+        ))
 
         # Modify Normal style
         styles['Normal'].fontSize = 10
@@ -274,6 +302,8 @@ class PDFReportGenerator:
         elements.append(Spacer(1, 0.5*inch))
         elements.append(Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d')}", self.styles['Normal']))
         elements.append(Paragraph(f"AI-powered analysis by ERAG using {self.llm_name}", self.styles['Normal']))
+        elements.append(Spacer(1, 0.25*inch))
+        elements.append(Paragraph("Includes maturity-based implementation approaches and expert guidance", self.styles['Normal']))
         elements.append(PageBreak())
 
         # Add a normal template for subsequent pages
@@ -299,7 +329,7 @@ class PDFReportGenerator:
 
         canvas.restoreState()
 
-    def _text_to_reportlab(self, text):
+    def _text_to_reportlab(self, text, skip_title=False, control_title=None):
         """Convert text with Markdown-like formatting to ReportLab elements with improved formatting."""
         elements = []
         paragraphs = []
@@ -311,17 +341,35 @@ class PDFReportGenerator:
         in_list = False
         list_items = []
         list_level = 0
+        skipped_title = False
         
         i = 0
         while i < len(lines):
             line = lines[i]
+            
+            # Skip the first heading if requested (to avoid title duplication)
+            if skip_title and not skipped_title and (
+                line.strip().startswith('# ') or 
+                line.strip().startswith('## ') or 
+                line.strip().startswith('### ') or 
+                (control_title and line.strip() == control_title or
+                 control_title and control_title in line)
+            ):
+                skipped_title = True
+                i += 1
+                # Skip any empty lines after the title too
+                while i < len(lines) and not lines[i].strip():
+                    i += 1
+                if i >= len(lines):
+                    break
+                line = lines[i]
             
             # Skip empty lines at the beginning
             if not line.strip() and not current_paragraph:
                 i += 1
                 continue
             
-            # Handle Markdown headings
+            # Handle Markdown headings with new smaller styles
             if line.startswith('# '):
                 # If there's a current paragraph, add it to the paragraphs list
                 if current_paragraph:
@@ -370,6 +418,16 @@ class PDFReportGenerator:
                 # Add extra spacing after headings
                 paragraphs.append('')
             
+            # Handle supervisor comments (lines starting with '// ')
+            elif line.strip().startswith('// '):
+                # If there's a current paragraph, add it
+                if current_paragraph:
+                    paragraphs.append(' '.join(current_paragraph))
+                    current_paragraph = []
+                
+                # Add as a supervisor comment
+                paragraphs.append(('supervisor_comment', line.strip()[3:]))
+                
             # Handle list items
             elif line.strip().startswith('* ') or line.strip().startswith('- '):
                 # If there's a current paragraph, add it
@@ -424,9 +482,6 @@ class PDFReportGenerator:
                 
                 # Add as a section title
                 paragraphs.append(('section_title', line.strip()))
-                
-                # Add space after the title
-                paragraphs.append('')
             
             # Regular text - add to the current paragraph
             else:
@@ -452,16 +507,20 @@ class PDFReportGenerator:
             elif isinstance(p, tuple):
                 if p[0] == 'heading1':
                     elements.append(Paragraph(p[1], self.styles['Heading1']))
-                    elements.append(Spacer(1, 12))
+                    elements.append(Spacer(1, 6))
                 elif p[0] == 'heading2':
                     elements.append(Paragraph(p[1], self.styles['Heading2']))
-                    elements.append(Spacer(1, 8))
+                    elements.append(Spacer(1, 4))
                 elif p[0] == 'heading3':
                     elements.append(Paragraph(p[1], self.styles['Heading3']))
-                    elements.append(Spacer(1, 6))
+                    elements.append(Spacer(1, 3))
                 elif p[0] == 'heading4':
                     elements.append(Paragraph(p[1], self.styles['Heading4']))
-                    elements.append(Spacer(1, 4))
+                    elements.append(Spacer(1, 2))
+                elif p[0] == 'supervisor_comment':
+                    # Add supervisor comments with a special style and a distinctive prefix
+                    elements.append(Paragraph( p[1], self.styles['SupervisorComment']))
+                    elements.append(Spacer(1, 3))
                 elif p[0] == 'section_title':
                     # Clean up the section title formatting
                     title = p[1].replace('**', '')
@@ -475,7 +534,7 @@ class PDFReportGenerator:
                         else:
                             # Sub-bullet
                             elements.append(Paragraph(f"   ○ {item}", self.styles['SubBulletPoint']))
-                    elements.append(Spacer(1, 6))  # Add space after list
+                    elements.append(Spacer(1, 3))  # Add space after list
             else:
                 try:
                     # Try to create a Paragraph object with proper formatting

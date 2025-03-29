@@ -209,26 +209,36 @@ class ChecklistDocumentor:
         
     Your response should be SPECIFICALLY TAILORED to this exact control, not generic audit guidance. Focus on how THIS PARTICULAR control would be tested, documented, and evaluated in a real-world environment.
 
+    DO NOT include any title headings that repeat the control text. Instead, start with a section titled "**Control Interpretation**" and continue from there.
+
     1. **Control Interpretation:** 
     - Provide a specific interpretation of what THIS control means in practical terms
     - What specific risks or requirements does THIS control address?
     - What specific business processes or systems does THIS control apply to?
 
-    2. **How to Test THIS SPECIFIC Control:** 
+    2. **Maturity-Based Implementation Approaches:**
+    - Describe how THIS control is implemented in LOW maturity organizations (manual processes, ad-hoc approaches)
+    - Describe how THIS control is implemented in MEDIUM maturity organizations (partial automation, some standardization)
+    - Describe how THIS control is implemented in HIGH maturity organizations (fully automated, tool-integrated, proactive approaches)
+    - For each maturity level, describe specific tools, processes, and methodologies that would be used
+
+    3. **How to Test THIS SPECIFIC Control:** 
     - What SPECIFIC preparatory steps are needed to test THIS control (exact documents, systems, or tools needed)
     - What REAL sampling approach makes sense for THIS control (exact sample sizes, selection criteria)
     - Provide DETAILED test steps that an auditor could follow verbatim to test THIS control
     - List SPECIFIC validation methods applicable to THIS control
     - Name ACTUAL tools, reports, or resources needed for THIS control test
+    - Describe how testing approaches differ based on organizational maturity levels
 
-    3. **How to Document THIS SPECIFIC Control:**
-    - What EXACT documentation formats are required for THIS control?
-    - What SPECIFIC screenshots or evidence should be collected for THIS control?
-    - What ACTUAL templates should be used for THIS control?
-    - How should documentation be organized for THIS control?
-    - What approval workflows apply to THIS control?
+    4. **How to Document THIS SPECIFIC Control:**
+    - What SPECIFIC documents must be collected for THIS control (exact contract sections, specific clauses, etc.)
+    - What EXACT evidence will prove compliance with THIS control (screenshots of specific settings, reports, etc.)
+    - What SPECIFIC details must be documented (e.g., "document the vendor security clauses in section X that specify Y")
+    - Do NOT recommend generic documentation approaches like "use standard working papers"
+    - Focus on the UNIQUE documentation needs for THIS SPECIFIC control
+    - Describe how documentation approaches differ based on organizational maturity levels
 
-    4. **Expected Findings for THIS SPECIFIC Control:** Use the exact format "It is an audit finding if...":
+    5. **Expected Findings for THIS SPECIFIC Control:** Use the exact format "It is an audit finding if...":
     - Describe what ACTUAL compliant implementation of THIS control looks like
     
     - Critical Findings for THIS CONTROL:
@@ -246,25 +256,17 @@ class ChecklistDocumentor:
         * It is a minor audit finding if... [specific scenario for THIS control]
         * It is a minor audit finding if... [specific scenario for THIS control]
 
-    5. **Risk Assessment for THIS SPECIFIC Control:**
-    - What SPECIFIC risks materialize if THIS control fails? (Be concrete)
-    - What ACTUAL impact (operational, financial, reputational) occurs if THIS control fails?
-    - How does failure of THIS control affect regulatory compliance?
+    6. **Detailed Documentation Example for THIS SPECIFIC Control:**
+    - This should be the MOST DETAILED section of your response
+    - Provide a CONCRETE, STEP-BY-STEP example of how to document THIS control
+    - Use SPECIFIC examples with sample text, actual findings, and detailed observations
+    - Include REALISTIC sample dates, version numbers, and other specific details
+    - Show what a COMPLETE set of documentation for THIS control would look like
+    - Include a detailed testing narrative with specific steps followed and results obtained
+    - Provide separate documentation examples for different maturity levels
 
-    6. **Regulatory Alignment for THIS SPECIFIC Control:**
-    - What SPECIFIC regulations or standards does THIS control help satisfy?
-    - Cite ACTUAL regulatory requirements, with specific references where possible
-    - What CONCRETE compliance outcomes does THIS control support?
-
-    7. **Detailed Documentation Example for THIS SPECIFIC Control:**
-    - Provide a REALISTIC, DETAILED example that directly relates to THIS control
-    - Use CONCRETE examples, realistic dates, sample sizes, and findings
-    - Include ACTUAL test steps an auditor would perform for THIS control
-    - Show REAL evidence that would be collected for THIS control
-    - Create SPECIFIC, NOT GENERIC test results for THIS control
-
-    8. **Tips and Tricks for THIS SPECIFIC Control:**
-    - Share expert techniques SPECIFICALLY for testing THIS control
+    7. **Tips and Tricks for THIS SPECIFIC Control:**
+    - Share expert techniques SPECIFICALLY for testing THIS control (not generic audit advice)
     - What common mistakes happen when testing THIS PARTICULAR control?
     - What would experienced auditors focus on for THIS SPECIFIC control?
     - Provide time-saving approaches SPECIFIC to THIS control
@@ -276,48 +278,34 @@ class ChecklistDocumentor:
 
     def generate_supervisor_prompt(self, control, worker_response):
         """Generate a prompt for the supervisor AI model to enhance the worker's response."""
-        return f"""You are a senior audit supervisor reviewing documentation for the following specific control: '{control}'
+        return f"""You are a SENIOR AUDIT SUPERVISOR with decades of experience reviewing documentation for the following specific control: '{control}'
 
     Below is the initial documentation prepared by a junior auditor:
 
     {worker_response}
 
-    Your task is to ADD ADDITIONAL INSIGHTS AND DETAILS to this documentation for THIS PARTICULAR control. DO NOT REWRITE what is already there - only ADD important points that are missing. Use transitional phrases like "In addition," "Also note that," "Be careful about," "We also need to consider," "It's worth mentioning that," etc.
+    Your task is to ADD COMPREHENSIVE, STATE-OF-THE-ART expert guidance to enhance the existing documentation. As a senior expert, provide detailed insights that elevate the audit approach to best-in-class standards. Focus on adding high-value content that reflects your deep experience in the field.
 
-    Please enhance the documentation by ADDING (not replacing) information in these areas:
+    Guidelines for your additions:
+    1. ALL of your additions MUST begin with "// " to clearly mark them as supervisor comments
+    2. Provide DETAILED, SUBSTANTIVE guidance based on your expertise - not brief comments
+    3. Add your insights at logical points in the existing document (after relevant paragraphs or sections)
+    4. Focus on practical, actionable insights specific to THIS control that reflect cutting-edge audit methodologies
+    5. Add significant value to EACH section, particularly to maturity-based approaches, documentation, and testing
+    6. Share specialized knowledge that only a highly experienced auditor would know
 
-    1. **Additional Control Interpretation Insights:**
-    - Add any missing nuances about how THIS control is implemented in practice
-    - Add additional business context that wasn't mentioned
+    PARTICULARLY IMPORTANT: For each maturity level mentioned (LOW, MEDIUM, HIGH), provide additional expert guidance on:
+    - Specific tools and technologies used at each maturity level for THIS control
+    - How leading organizations implement THIS control compared to less mature ones
+    - How audit approaches should be tailored to each maturity level
+    - Common pitfalls specific to each maturity level for THIS control
+    - Forward-looking trends and emerging best practices for THIS control
 
-    2. **Additional Test Procedure Considerations:**
-    - Add any specialized testing approaches that weren't mentioned
-    - Add any additional sampling considerations or edge cases to test
-    - Add any extra validation methods that were overlooked
+    IMPORTANT: Your response should consist ONLY of the detailed expert guidance you want to add, each comment starting with "// ". 
+    DO NOT include the original worker response - I will combine your guidance with the original content myself.
+    Your additions will be inserted at appropriate points in the original text.
 
-    3. **Additional Documentation Requirements:**
-    - Add any additional evidence types that should be collected
-    - Add any documentation best practices that weren't mentioned
-
-    4. **Additional Possible Findings:**
-    - Add any additional critical, major, or minor finding scenarios using the format "In addition, it is a [severity] audit finding if..."
-    - Add any subtle compliance issues that might be missed
-
-    5. **Additional Risk Considerations:**
-    - Add any additional risk factors or consequences not already mentioned
-    - Add any dependencies on other controls
-
-    6. **Additional Regulatory Information:**
-    - Add any additional regulations or standards that apply
-    - Add any regulatory nuances that were missed
-
-    7. **Additional Expert Tips:**
-    - Add any senior auditor insights that would help with THIS control
-    - Add any efficiency tips or pitfalls to avoid
-
-    IMPORTANT: Your response should ONLY CONTAIN ADDITIONAL INFORMATION - do not repeat what's already in the documentation. Start your response with "## Additional Senior Auditor Insights" and focus on value-adding content that complements what's already there. Use clear transition phrases to indicate you're adding to the existing documentation.
-
-    Remember that your additions should be specific to THIS control, not generic audit advice."""
+    Remember that your expert guidance should be specific to THIS control, not generic audit advice. Provide the kind of insights that would only come from an auditor with decades of specialized experience."""
 
     def write_to_output_file(self, content):
         """Write content to the output file and flush immediately."""
@@ -345,10 +333,47 @@ class ChecklistDocumentor:
         """Process a control with supervisor review of the worker's response."""
         prompt = self.generate_supervisor_prompt(control, worker_response)
         supervisor_response = self.supervisor_erag_api.chat([
-            {"role": "system", "content": "You are a senior audit expert reviewing and enhancing audit control documentation."},
+            {"role": "system", "content": "You are a senior audit expert with decades of experience adding detailed guidance to audit control documentation."},
             {"role": "user", "content": prompt}
         ])
         return supervisor_response
+
+    def integrate_supervisor_comments(self, worker_response, supervisor_comments):
+        """Integrate supervisor comments into worker response."""
+        # Split both texts into sections
+        worker_sections = worker_response.split('\n\n')
+        
+        # Split supervisor comments into individual comments
+        supervisor_lines = supervisor_comments.strip().split('\n')
+        supervisor_comments_list = [line for line in supervisor_lines if line.strip().startswith('//')]
+        
+        # If no proper supervisor comments, append them all at the end
+        if not supervisor_comments_list:
+            # Just append all supervisor text at the end
+            return f"{worker_response}\n\n{supervisor_comments}"
+        
+        # Try to distribute comments throughout the worker response
+        result_sections = []
+        comments_per_section = max(1, len(supervisor_comments_list) // len(worker_sections))
+        
+        for i, section in enumerate(worker_sections):
+            result_sections.append(section)
+            
+            # Add some supervisor comments after this section
+            start_idx = i * comments_per_section
+            end_idx = start_idx + comments_per_section
+            
+            if start_idx < len(supervisor_comments_list):
+                comments_to_add = supervisor_comments_list[start_idx:end_idx]
+                if comments_to_add:
+                    result_sections.append("\n".join(comments_to_add))
+        
+        # Add any remaining comments at the end
+        remaining_comments = supervisor_comments_list[(len(worker_sections) * comments_per_section):]
+        if remaining_comments:
+            result_sections.append("\n".join(remaining_comments))
+            
+        return "\n\n".join(result_sections)
 
     def process_checklist(self):
         """Process the checklist and generate responses for each control."""
@@ -432,30 +457,35 @@ class ChecklistDocumentor:
                 
                 # If supervisor is enabled and available, use it to improve the response
                 if self.use_supervisor and self.supervisor_available:
-                    progress_label.config(text=f"Supervisor reviewing control {i}/{len(controls)}...")
+                    progress_label.config(text=f"Supervisor adding expert guidance to control {i}/{len(controls)}...")
                     progress_window.window.update()
                     
                     # Check if paused before supervisor processing
                     self.check_if_paused()
                     
-                    supervisor_response = self.process_control_with_supervisor(control, worker_response)
-                    # Combine worker and supervisor responses instead of replacing
-                    final_response = f"{worker_response}\n\n{supervisor_response}"
+                    # Get supervisor's comments
+                    supervisor_comments = self.process_control_with_supervisor(control, worker_response)
+                    
+                    # Integrate supervisor comments into worker response
+                    final_response = self.integrate_supervisor_comments(worker_response, supervisor_comments)
                 
-                # Format the result for text output
+                # Format the result for text output (no duplication of title)
                 text_output = f"Control {i}: {control}\n\n{final_response}\n\n{'='*80}\n\n"
                 
                 # Write this control's documentation to the output file
                 self.write_to_output_file(text_output)
                 
-                # Format content for PDF with proper markdown structure
-                pdf_content = self.format_control_for_pdf(control, final_response, i)
+                # For PDF, we need to create clean content without duplicate titles
+                # We'll completely skip any title/header creation here and let the PDF processor handle it
+                pdf_content = final_response
                 
-                # Add to PDF content
-                self.pdf_content.append((f"Control {i}: {control}", [], pdf_content))
+                # Add to PDF content - using a simple title to avoid duplication
+                # This title will be processed by the PDF renderer
+                simple_title = f"Control {i}: {control}"
+                self.pdf_content.append((simple_title, [], pdf_content))
                 
                 # Extract key findings for the PDF report
-                findings.append(f"Control {i}: {control}")
+                findings.append(simple_title)
                 
                 # Update progress to completion for this control
                 progress_var.set(i / len(controls) * 100)
@@ -521,86 +551,6 @@ class ChecklistDocumentor:
             error_message = f"Error generating PDF report: {str(e)}"
             print(error(error_message))
             return None
-        
-    def format_control_for_pdf(self, control, response, index):
-        """Format control documentation for PDF with proper markdown structure."""
-        # Extract title if available (often starts with "## Audit Control: ")
-        lines = response.split('\n')
-        title_line = next((line for line in lines if line.startswith("## Audit Control:") or line.startswith("## ")), None)
-        
-        # If no title found, create one
-        if not title_line:
-            title = f"Audit Control: {control}"
-        else:
-            title = title_line.strip("# ")
-        
-        # Check if response already has markdown structure
-        has_markdown_headings = any(line.startswith('#') for line in lines)
-        
-        if has_markdown_headings:
-            # Response already has markdown structure, just ensure proper overall structure
-            formatted_content = f"""# Control {index}: {control}
-
-    {response}
-    """
-        else:
-            # Response lacks markdown structure, add it
-            sections = [
-                "Control Interpretation",
-                "How to Test",
-                "How to Document",
-                "Expected Findings",
-                "Risk Assessment",
-                "Regulatory Alignment",
-                "Detailed Documentation Example",
-                "Tips and Tricks"
-            ]
-            
-            # Find each section in the response
-            formatted_sections = []
-            formatted_sections.append(f"# Control {index}: {control}")
-            formatted_sections.append(f"## {title}")
-            
-            current_text = []
-            current_section = None
-            
-            for line in lines:
-                # Check if this line starts a new section
-                found_section = False
-                for section in sections:
-                    if line.strip().startswith(section + ":") or line.strip() == section:
-                        # End previous section if any
-                        if current_section and current_text:
-                            formatted_sections.append(f"### {current_section}")
-                            formatted_sections.append('\n'.join(current_text))
-                            current_text = []
-                        
-                        # Start new section
-                        current_section = section
-                        found_section = True
-                        break
-                
-                if found_section:
-                    continue
-                
-                # Add line to current section
-                if current_section:
-                    current_text.append(line)
-                else:
-                    # If no section has been found yet, this is introductory text
-                    current_text.append(line)
-            
-            # Add final section
-            if current_section and current_text:
-                formatted_sections.append(f"### {current_section}")
-                formatted_sections.append('\n'.join(current_text))
-            elif current_text:
-                # Any remaining text without a section
-                formatted_sections.append('\n'.join(current_text))
-            
-            formatted_content = '\n\n'.join(formatted_sections)
-        
-        return formatted_content
 
     def create_progress_window(self, total_items):
         """Create a progress window for showing processing status."""
@@ -957,7 +907,7 @@ class ChecklistDocumentor:
             
             ttk.Label(
                 config_frame,
-                text="Using the supervisor model will provide additional insights and details\n"
+                text="Using the supervisor model will provide additional expert insights and maturity-based guidance\n"
                      "to enhance basic documentation, but will take more time to process.",
                 foreground="gray"
             ).pack(anchor="w", padx=5, pady=0)
@@ -1060,6 +1010,7 @@ class ChecklistDocumentor:
             main_frame,
             text="This tool helps you create comprehensive audit documentation for checklist items.\n"
                  "Select an Excel or CSV file containing your audit controls or checklist items.\n"
+                 "Documentation will include maturity-based approaches and expert guidance.\n"
                  "Press Ctrl+C during processing to pause/resume.",
             justify="left",
             wraplength=780
