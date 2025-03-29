@@ -212,62 +212,51 @@ class ChecklistDocumentor:
     DO NOT include any title headings that repeat the control text. Instead, start with a section titled "**Control Interpretation**" and continue from there.
 
     1. **Control Interpretation:** 
-    - Provide a specific interpretation of what THIS control means in practical terms
-    - What specific risks or requirements does THIS control address?
-    - What specific business processes or systems does THIS control apply to?
+    - Provide a specific interpretation of what THIS control means in practical terms (keep it short)
 
     2. **Maturity-Based Implementation Approaches:**
     - Describe how THIS control is implemented in LOW maturity organizations (manual processes, ad-hoc approaches)
     - Describe how THIS control is implemented in MEDIUM maturity organizations (partial automation, some standardization)
     - Describe how THIS control is implemented in HIGH maturity organizations (fully automated, tool-integrated, proactive approaches)
-    - For each maturity level, describe specific tools, processes, and methodologies that would be used
 
-    3. **How to Test THIS SPECIFIC Control:** 
+    3. **How to Test and Document THIS SPECIFIC Control:** 
+    Do NOT recommend generic documentation approaches like "use standard working papers" and focus on the UNIQUE documentation needs for THIS SPECIFIC control
+
+
     - What SPECIFIC preparatory steps are needed to test THIS control (exact documents, systems, or tools needed)
     - What REAL sampling approach makes sense for THIS control (exact sample sizes, selection criteria)
-    - Provide DETAILED test steps that an auditor could follow verbatim to test THIS control
-    - List SPECIFIC validation methods applicable to THIS control
+    - Provide DETAILED, step by step, instructions that an auditor could follow verbatim to test THIS control
     - Name ACTUAL tools, reports, or resources needed for THIS control test
-    - Describe how testing approaches differ based on organizational maturity levels
-
-    4. **How to Document THIS SPECIFIC Control:**
     - What SPECIFIC documents must be collected for THIS control (exact contract sections, specific clauses, etc.)
-    - What EXACT evidence will prove compliance with THIS control (screenshots of specific settings, reports, etc.)
     - What SPECIFIC details must be documented (e.g., "document the vendor security clauses in section X that specify Y")
-    - Do NOT recommend generic documentation approaches like "use standard working papers"
-    - Focus on the UNIQUE documentation needs for THIS SPECIFIC control
-    - Describe how documentation approaches differ based on organizational maturity levels
+
 
     5. **Expected Findings for THIS SPECIFIC Control:** Use the exact format "It is an audit finding if...":
-    - Describe what ACTUAL compliant implementation of THIS control looks like
     
-    - Critical Findings for THIS CONTROL:
+    - Critical Findings for THIS CONTROL (3-4 examples):
         * It is a critical audit finding if... [specific scenario for THIS control]
         * It is a critical audit finding if... [specific scenario for THIS control]
         * It is a critical audit finding if... [specific scenario for THIS control]
     
-    - Major Findings for THIS CONTROL:
-        * It is a major audit finding if... [specific scenario for THIS control]
+    - Major Findings for THIS CONTROL (3-4 examples):
         * It is a major audit finding if... [specific scenario for THIS control]
         * It is a major audit finding if... [specific scenario for THIS control]
     
-    - Minor Findings for THIS CONTROL:
-        * It is a minor audit finding if... [specific scenario for THIS control]
-        * It is a minor audit finding if... [specific scenario for THIS control]
+    - Minor Findings for THIS CONTROL (3-4 examples):
         * It is a minor audit finding if... [specific scenario for THIS control]
 
+
     6. **Detailed Documentation Example for THIS SPECIFIC Control:**
-    - This should be the MOST DETAILED section of your response
-    - Provide a CONCRETE, STEP-BY-STEP example of how to document THIS control
+    Based on a hypotethical scenario:
+    - Provide a CONCRETE, STEP-BY-STEP example of how to document THIS control 
     - Use SPECIFIC examples with sample text, actual findings, and detailed observations
     - Include REALISTIC sample dates, version numbers, and other specific details
     - Show what a COMPLETE set of documentation for THIS control would look like
     - Include a detailed testing narrative with specific steps followed and results obtained
-    - Provide separate documentation examples for different maturity levels
 
     7. **Tips and Tricks for THIS SPECIFIC Control:**
     - Share expert techniques SPECIFICALLY for testing THIS control (not generic audit advice)
-    - What common mistakes happen when testing THIS PARTICULAR control?
+    - What common mistakes and common pitfalls happen when testing THIS PARTICULAR control?
     - What would experienced auditors focus on for THIS SPECIFIC control?
     - Provide time-saving approaches SPECIFIC to THIS control
     - How should auditors handle objections SPECIFICALLY about THIS control?
@@ -291,7 +280,7 @@ class ChecklistDocumentor:
     2. Provide DETAILED, SUBSTANTIVE guidance based on your expertise - not brief comments
     3. Add your insights at logical points in the existing document (after relevant paragraphs or sections)
     4. Focus on practical, actionable insights specific to THIS control that reflect cutting-edge audit methodologies
-    5. Add significant value to EACH section, particularly to maturity-based approaches, documentation, and testing
+    5. Add significant value to EACH section
     6. Share specialized knowledge that only a highly experienced auditor would know
 
     PARTICULARLY IMPORTANT: For each maturity level mentioned (LOW, MEDIUM, HIGH), provide additional expert guidance on:
