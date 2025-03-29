@@ -302,7 +302,7 @@ class ChecklistDocumentor:
     - Forward-looking trends and emerging best practices for THIS control
 
     IMPORTANT: Your response should consist ONLY of the detailed expert guidance you want to add, each comment starting with "// ". 
-    DO NOT include the original worker response - I will combine your guidance with the original content myself.
+    DO NOT include the original worker response or titles or subtitles - I will combine your guidance with the original content myself.
     Your additions will be inserted at appropriate points in the original text.
 
     Remember that your expert guidance should be specific to THIS control, not generic audit advice. Provide the kind of insights that would only come from an auditor with decades of specialized experience."""

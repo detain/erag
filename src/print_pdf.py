@@ -179,7 +179,8 @@ class PDFReportGenerator:
             leftIndent=10,
             spaceBefore=4,
             spaceAfter=4,
-            leading=14  # Better line spacing for longer expert comments
+            leading=14,  # Better line spacing for longer expert comments
+            alignment=TA_JUSTIFY
         ))
 
         # Modify Normal style
