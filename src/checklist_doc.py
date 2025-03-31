@@ -9,6 +9,7 @@ import threading
 import signal
 import sys
 import time
+import re
 
 from src.look_and_feel import error, success, warning, info, highlight
 from src.print_pdf import PDFReportGenerator
@@ -231,7 +232,7 @@ class ChecklistDocumentor:
     - What SPECIFIC details must be documented (e.g., "document the vendor security clauses in section X that specify Y")
 
 
-    5. **Expected Findings for THIS SPECIFIC Control:** Use the exact format "It is an audit finding if...":
+    4. **Expected Findings for THIS SPECIFIC Control:** Use the exact format "It is an audit finding if...":
     
     - Critical Findings for THIS CONTROL (3-4 examples):
         * It is a critical audit finding if... [specific scenario for THIS control]
@@ -246,7 +247,7 @@ class ChecklistDocumentor:
         * It is a minor audit finding if... [specific scenario for THIS control]
 
 
-    6. **Detailed Documentation Example for THIS SPECIFIC Control:**
+    5. **Detailed Documentation Example for THIS SPECIFIC Control:**
     Based on a hypotethical scenario:
     - Provide a CONCRETE, STEP-BY-STEP example of how to document THIS control 
     - Use SPECIFIC examples with sample text, actual findings, and detailed observations
@@ -254,7 +255,7 @@ class ChecklistDocumentor:
     - Show what a COMPLETE set of documentation for THIS control would look like
     - Include a detailed testing narrative with specific steps followed and results obtained
 
-    7. **Tips and Tricks for THIS SPECIFIC Control:**
+    6. **Tips and Tricks for THIS SPECIFIC Control:**
     - Share expert techniques SPECIFICALLY for testing THIS control (not generic audit advice)
     - What common mistakes and common pitfalls happen when testing THIS PARTICULAR control?
     - What would experienced auditors focus on for THIS SPECIFIC control?
@@ -278,7 +279,7 @@ class ChecklistDocumentor:
     Guidelines for your additions:
     1. ALL of your additions MUST begin with "// " to clearly mark them as supervisor comments
     2. Provide DETAILED, SUBSTANTIVE guidance based on your expertise - not brief comments
-    3. Add your insights at logical points in the existing document (after relevant paragraphs or sections)
+    3. Add your insights at logical points in the existing document (at the end of each chapter/section)
     4. Focus on practical, actionable insights specific to THIS control that reflect cutting-edge audit methodologies
     5. Add significant value to EACH section
     6. Share specialized knowledge that only a highly experienced auditor would know
@@ -291,7 +292,7 @@ class ChecklistDocumentor:
     - Forward-looking trends and emerging best practices for THIS control
 
     IMPORTANT: Your response should consist ONLY of the detailed expert guidance you want to add, each comment starting with "// ". 
-    DO NOT include the original worker response or titles or subtitles - I will combine your guidance with the original content myself.
+    DO NOT include the original worker response or titles or subtitles - I will combine your guidance with the original content myself. Do not ask the junior auditor to improve the text.
     Your additions will be inserted at appropriate points in the original text.
 
     Remember that your expert guidance should be specific to THIS control, not generic audit advice. Provide the kind of insights that would only come from an auditor with decades of specialized experience."""
@@ -328,41 +329,84 @@ class ChecklistDocumentor:
         return supervisor_response
 
     def integrate_supervisor_comments(self, worker_response, supervisor_comments):
-        """Integrate supervisor comments into worker response."""
-        # Split both texts into sections
-        worker_sections = worker_response.split('\n\n')
+        """Integrate supervisor comments at the end of each main section in the worker response."""
+        # Define the section patterns to look for
+        section_patterns = [
+            r'\*\*Control Interpretation\*\*',
+            r'\*\*Maturity-Based Implementation Approaches\*\*',
+            r'\*\*How to Test and Document.*?\*\*',
+            r'\*\*Expected Findings.*?\*\*',
+            r'\*\*Detailed Documentation Example.*?\*\*',
+            r'\*\*Tips and Tricks.*?\*\*'
+        ]
         
         # Split supervisor comments into individual comments
-        supervisor_lines = supervisor_comments.strip().split('\n')
-        supervisor_comments_list = [line for line in supervisor_lines if line.strip().startswith('//')]
+        supervisor_comments = supervisor_comments.strip()
+        if not supervisor_comments:
+            return worker_response
+            
+        supervisor_lines = supervisor_comments.split('\n')
+        supervisor_comments_list = [line for line in supervisor_lines if line.strip().startswith('// ')]
         
         # If no proper supervisor comments, append them all at the end
         if not supervisor_comments_list:
-            # Just append all supervisor text at the end
             return f"{worker_response}\n\n{supervisor_comments}"
         
-        # Try to distribute comments throughout the worker response
-        result_sections = []
-        comments_per_section = max(1, len(supervisor_comments_list) // len(worker_sections))
+        # Find all section headers in the text
+        positions = []
         
-        for i, section in enumerate(worker_sections):
-            result_sections.append(section)
-            
-            # Add some supervisor comments after this section
-            start_idx = i * comments_per_section
-            end_idx = start_idx + comments_per_section
-            
-            if start_idx < len(supervisor_comments_list):
-                comments_to_add = supervisor_comments_list[start_idx:end_idx]
-                if comments_to_add:
-                    result_sections.append("\n".join(comments_to_add))
+        for pattern in section_patterns:
+            for match in re.finditer(pattern, worker_response, re.IGNORECASE):
+                positions.append(match.start())
         
-        # Add any remaining comments at the end
-        remaining_comments = supervisor_comments_list[(len(worker_sections) * comments_per_section):]
-        if remaining_comments:
-            result_sections.append("\n".join(remaining_comments))
+        # If we couldn't find enough sections, fall back to a simpler approach
+        if len(positions) < 3:
+            return f"{worker_response}\n\n**Expert Comments:**\n\n{'\n'.join(supervisor_comments_list)}"
+        
+        # Sort positions to maintain the correct order
+        positions.sort()
+        
+        # Add the end of document as a final position
+        positions.append(len(worker_response))
+        
+        # Build the result by inserting comments at section boundaries
+        result = ""
+        last_pos = 0
+        
+        # Calculate comments per section
+        num_sections = len(positions) - 1  # -1 because the last position is end of document
+        comments_per_section = len(supervisor_comments_list) // num_sections
+        extra_comments = len(supervisor_comments_list) % num_sections
+        
+        # Insert comments at each section boundary
+        for i in range(num_sections):
+            # End of current section / start of next section
+            next_pos = positions[i + 1]
             
-        return "\n\n".join(result_sections)
+            # Add content of current section
+            result += worker_response[last_pos:next_pos]
+            
+            # Calculate comments for this section
+            num_comments = comments_per_section
+            if i < extra_comments:
+                num_comments += 1
+                
+            # If we have comments for this section, add them
+            if num_comments > 0:
+                start_idx = i * comments_per_section + min(i, extra_comments)
+                end_idx = start_idx + num_comments
+                
+                section_comments = supervisor_comments_list[start_idx:end_idx]
+                
+                # Add the comment block
+                result += "\n\n**Expert Comments:**\n\n"
+                result += "\n".join(section_comments)
+                result += "\n\n"
+            
+            # Update position for next iteration
+            last_pos = next_pos
+        
+        return result
 
     def process_checklist(self):
         """Process the checklist and generate responses for each control."""

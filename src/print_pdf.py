@@ -24,6 +24,7 @@ class PDFReportGenerator:
         self.project_name = project_name
         self.report_title = None
         self.styles = self._create_styles()
+        self.debug_mode = False  # Set to True to print debug info
 
     def create_enhanced_pdf_report(self, findings, pdf_content, image_data, filename="report", report_title=None):
         self.report_title = report_title or f"Analysis Report for {self.project_name}"
@@ -183,6 +184,18 @@ class PDFReportGenerator:
             alignment=TA_JUSTIFY
         ))
 
+        # Add a style for expert comments section heading
+        styles.add(ParagraphStyle(
+            name='ExpertCommentsHeading',
+            parent=styles['Normal'],
+            fontSize=10,
+            fontName='Helvetica-Bold',
+            textColor=colors.Color(*DARK_BLUE_RGB),
+            spaceBefore=6,
+            spaceAfter=2,
+            leading=12
+        ))
+
         # Modify Normal style
         styles['Normal'].fontSize = 10
         styles['Normal'].alignment = TA_JUSTIFY
@@ -225,6 +238,17 @@ class PDFReportGenerator:
                 spaceBefore=1,
                 spaceAfter=1
             ))
+            
+        # Add style for bullet points with embedded bold text
+        styles.add(ParagraphStyle(
+            name='BulletWithEmbeddedBold',
+            parent=styles['BulletPoint'],
+            bulletIndent=20,
+            leftIndent=40,
+            firstLineIndent=-20,
+            spaceBefore=2,
+            spaceAfter=2
+        ))
 
         # Add or modify TOCEntry style
         if 'TOCEntry' in styles:
@@ -370,6 +394,18 @@ class PDFReportGenerator:
                 i += 1
                 continue
             
+            # Handle expert comments heading
+            if line.strip() == "**Expert Comments:**":
+                # If there's a current paragraph, add it
+                if current_paragraph:
+                    paragraphs.append(' '.join(current_paragraph))
+                    current_paragraph = []
+                
+                # Add the expert comments heading
+                paragraphs.append(('expert_comments_heading', line.strip()))
+                i += 1
+                continue
+                
             # Handle Markdown headings with new smaller styles
             if line.startswith('# '):
                 # If there's a current paragraph, add it to the paragraphs list
@@ -443,6 +479,9 @@ class PDFReportGenerator:
                 else:
                     list_level = 0  # Main bullet
                 
+                # Remove the bullet point symbol
+                item_text = line.strip()[2:].strip()
+                
                 # Start/continue a list
                 if not in_list:
                     # If we're starting a new list, add extra space before it
@@ -451,8 +490,21 @@ class PDFReportGenerator:
                     in_list = True
                     list_items = []
                 
-                # Add this item to the list with its level
-                list_items.append((list_level, line.strip()[2:]))
+                # Look for multi-line bullet points - collect all lines until next bullet or blank line
+                bullet_content = [item_text]
+                j = i + 1
+                while j < len(lines) and not lines[j].strip().startswith('* ') and not lines[j].strip().startswith('- ') and lines[j].strip():
+                    bullet_content.append(lines[j].strip())
+                    j += 1
+                
+                # Process multi-lines together for the bullet point
+                full_bullet_content = ' '.join(bullet_content)
+                
+                # Add this item to the list with formatting info
+                list_items.append((list_level, full_bullet_content))
+                
+                # Skip the lines we've already processed
+                i = j - 1
                 
                 # Check if the next line is also a list item
                 if i + 1 < len(lines) and (lines[i+1].strip().startswith('* ') or lines[i+1].strip().startswith('- ')):
@@ -486,12 +538,6 @@ class PDFReportGenerator:
             
             # Regular text - add to the current paragraph
             else:
-                # Replace markdown formatting with HTML equivalents for better display
-                # Bold
-                line = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
-                # Italic
-                line = re.sub(r'\*(.*?)\*', r'<i>\1</i>', line)
-                
                 current_paragraph.append(line)
             
             i += 1
@@ -518,9 +564,13 @@ class PDFReportGenerator:
                 elif p[0] == 'heading4':
                     elements.append(Paragraph(p[1], self.styles['Heading4']))
                     elements.append(Spacer(1, 2))
+                elif p[0] == 'expert_comments_heading':
+                    # Add expert comments heading with a special style
+                    elements.append(Paragraph(p[1], self.styles['ExpertCommentsHeading']))
+                    elements.append(Spacer(1, 2))
                 elif p[0] == 'supervisor_comment':
                     # Add supervisor comments with a special style and a distinctive prefix
-                    elements.append(Paragraph( p[1], self.styles['SupervisorComment']))
+                    elements.append(Paragraph(p[1], self.styles['SupervisorComment']))
                     elements.append(Spacer(1, 3))
                 elif p[0] == 'section_title':
                     # Clean up the section title formatting
@@ -528,21 +578,30 @@ class PDFReportGenerator:
                     elements.append(Paragraph(title, self.styles['SectionTitle']))
                 elif p[0] == 'bullet_list':
                     # Add each bullet item as a paragraph with proper indentation
-                    for level, item in p[1]:
+                    for level, content in p[1]:
+                        # Process markdown formatting in the bullet content
+                        formatted_content = self._process_bullet_content(content)
+                        
                         if level == 0:
                             # Main bullet
-                            elements.append(Paragraph(f"• {item}", self.styles['BulletPoint']))
+                            bullet_text = f"• {formatted_content}"
+                            elements.append(Paragraph(bullet_text, self.styles['BulletWithEmbeddedBold']))
                         else:
                             # Sub-bullet
-                            elements.append(Paragraph(f"   ○ {item}", self.styles['SubBulletPoint']))
+                            bullet_text = f"   ○ {formatted_content}"
+                            elements.append(Paragraph(bullet_text, self.styles['BulletWithEmbeddedBold']))
+                    
                     elements.append(Spacer(1, 3))  # Add space after list
             else:
                 try:
-                    # Try to create a Paragraph object with proper formatting
-                    para = Paragraph(p, self.styles['Normal'])
+                    # Process any markdown in the paragraph
+                    processed_text = self._process_markdown_inline(p)
+                    
+                    # Create a paragraph with the processed text
+                    para = Paragraph(processed_text, self.styles['Normal'])
                     elements.append(para)
                 except Exception as e:
-                    # If there's an error, clean the text and try again
+                    # If there's an error, try with a cleaned version
                     cleaned_text = self._clean_text(p)
                     try:
                         para = Paragraph(cleaned_text, self.styles['Normal'])
@@ -554,11 +613,97 @@ class PDFReportGenerator:
         
         return elements
 
+    def _process_bullet_content(self, content):
+        """
+        Process bullet content with special handling for common patterns.
+        This handles several formats:
+        - "**Text:** More text" (Bold lead with colon)
+        - "Text with **bold words** in the middle"
+        """
+        # Debug print
+        if self.debug_mode:
+            print(f"Processing bullet content: {content}")
+
+        # First pattern: "**Text:** More text" 
+        pattern1 = re.compile(r'^\s*\*\*([^*:]+)\*\*:\s*(.*)', re.DOTALL)
+        match1 = pattern1.match(content)
+        if match1:
+            bold_part = match1.group(1).strip()
+            rest_part = match1.group(2).strip()
+            result = f"<b>{bold_part}:</b> {self._process_markdown_inline(rest_part)}"
+            if self.debug_mode:
+                print(f"Pattern 1 matched. Result: {result}")
+            return result
+            
+        # Second pattern: Handle any inline bold markdown
+        result = self._process_markdown_inline(content)
+        if self.debug_mode and result != content:
+            print(f"Applied inline processing. Result: {result}")
+        return result
+
+    def _process_markdown_inline(self, text):
+        """Process Markdown-like formatting to HTML for ReportLab."""
+        # Original text for comparison
+        original = text
+        
+        # Bold text - **text**
+        text = re.sub(r'\*\*([^*]+?)\*\*', r'<b>\1</b>', text)
+        
+        # Italic text - *text*
+        text = re.sub(r'(?<!\*)\*([^*]+?)\*(?!\*)', r'<i>\1</i>', text)
+        
+        # Fix bold text with colon - convert <b>text</b>: to <b>text:</b>
+        text = re.sub(r'<b>([^<:]+)</b>:', r'<b>\1:</b>', text)
+        
+        # Italic with underscore - _text_
+        text = re.sub(r'_([^_]+?)_', r'<i>\1</i>', text)
+        
+        # Debug output
+        if self.debug_mode and original != text:
+            print(f"Markdown processing: '{original}' -> '{text}'")
+            
+        return text
+
     def _clean_text(self, text):
-        # Remove any HTML-like tags
-        text = re.sub('<[^<]+?>', '', text)
-        # Replace special characters with their HTML entities
-        text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        """Clean text to make it safe for ReportLab."""
+        # Process markdown first
+        text = self._process_markdown_inline(str(text))
+        
+        # Extract all HTML tags before escaping
+        html_tags = []
+        pattern = re.compile(r'<[^>]+>')
+        for match in pattern.finditer(text):
+            html_tags.append((match.start(), match.end(), match.group()))
+        
+        # Replace problematic characters with their HTML entities
+        text = text.replace('&', '&amp;')
+        text = text.replace('<', '&lt;')
+        text = text.replace('>', '&gt;')
+        
+        # Restore the original HTML tags (in reverse order to preserve positions)
+        for start, end, tag in reversed(html_tags):
+            replacement_length = end - start
+            entity_length = len(text[start:start+replacement_length])
+            
+            # The length of "&lt;" is different from "<", so adjust positions
+            text = text[:start] + tag + text[start+entity_length:]
+        
         # Remove any non-printable characters
         text = ''.join(char for char in text if ord(char) > 31 or ord(char) == 9)
+        
+        # Fix unmatched HTML tags
+        open_b = text.count('<b>')
+        close_b = text.count('</b>')
+        if open_b > close_b:
+            text += '</b>' * (open_b - close_b)
+        elif close_b > open_b:
+            text = '<b>' * (close_b - open_b) + text
+            
+        open_i = text.count('<i>')
+        close_i = text.count('</i>')
+        if open_i > close_i:
+            text += '</i>' * (open_i - close_i)
+        elif close_i > open_i:
+            text = '<i>' * (close_i - open_i) + text
+            
         return text
