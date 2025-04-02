@@ -170,20 +170,6 @@ class PDFReportGenerator:
                 leading=12
             ))
 
-        # Add a style for supervisor comments - looking for // instead of >>>
-        styles.add(ParagraphStyle(
-            name='SupervisorComment',
-            parent=styles['Normal'],
-            fontSize=10,
-            fontName='Helvetica-Oblique',
-            textColor=colors.black,
-            leftIndent=10,
-            spaceBefore=4,
-            spaceAfter=4,
-            leading=14,  # Better line spacing for longer expert comments
-            alignment=TA_JUSTIFY
-        ))
-
         # Add a style for expert comments section heading
         styles.add(ParagraphStyle(
             name='ExpertCommentsHeading',
@@ -455,16 +441,6 @@ class PDFReportGenerator:
                 # Add extra spacing after headings
                 paragraphs.append('')
             
-            # Handle supervisor comments (lines starting with '// ')
-            elif line.strip().startswith('// '):
-                # If there's a current paragraph, add it
-                if current_paragraph:
-                    paragraphs.append(' '.join(current_paragraph))
-                    current_paragraph = []
-                
-                # Add as a supervisor comment
-                paragraphs.append(('supervisor_comment', line.strip()[3:]))
-                
             # Handle list items
             elif line.strip().startswith('* ') or line.strip().startswith('- '):
                 # If there's a current paragraph, add it
@@ -568,10 +544,6 @@ class PDFReportGenerator:
                     # Add expert comments heading with a special style
                     elements.append(Paragraph(p[1], self.styles['ExpertCommentsHeading']))
                     elements.append(Spacer(1, 2))
-                elif p[0] == 'supervisor_comment':
-                    # Add supervisor comments with a special style and a distinctive prefix
-                    elements.append(Paragraph(p[1], self.styles['SupervisorComment']))
-                    elements.append(Spacer(1, 3))
                 elif p[0] == 'section_title':
                     # Clean up the section title formatting
                     title = p[1].replace('**', '')

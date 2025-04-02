@@ -16,8 +16,12 @@ from src.print_pdf import PDFReportGenerator
 
 class ChecklistDocumentor:
     def __init__(self, worker_erag_api, supervisor_erag_api=None):
+        """Initialize the ChecklistDocumentor with the worker model API.
+        
+        The supervisor_erag_api parameter is maintained for backward compatibility but not used.
+        """
         self.worker_erag_api = worker_erag_api
-        self.supervisor_erag_api = supervisor_erag_api
+        # Ignore supervisor_erag_api as we've merged functionality into the worker
         self.output_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output")
         os.makedirs(self.output_folder, exist_ok=True)
         self.file_path = None
@@ -30,8 +34,6 @@ class ChecklistDocumentor:
         self.preview_frame = None
         self.data_analysis = {}
         self.column_stats = {}
-        self.use_supervisor = True  # Default to True to enable supervisor by default
-        self.supervisor_available = self.supervisor_erag_api is not None
         self.has_header = True  # Default to True since most files have headers
         self.output_file = None
         self.pdf_content = []
@@ -204,25 +206,57 @@ class ChecklistDocumentor:
         controls = [control.strip() for control in df[column_name].dropna().tolist() if control.strip() != ""]
         return controls, df
 
-    def generate_worker_prompt(self, control):
-        """Generate a detailed prompt for the worker AI model based on the audit control."""
-        return f"""For the following specific audit control: '{control}', provide a detailed, PRACTICAL, and CONCRETE response. 
+    def generate_enhanced_prompt(self, control):
+        """Generate an enhanced prompt for the worker AI model that includes both detailed analysis and expert guidance."""
+        return f"""For the following specific audit control: '{control}', provide a comprehensive, PRACTICAL, and CONCRETE response that combines both detailed analysis and expert-level guidance.
         
     Your response should be SPECIFICALLY TAILORED to this exact control, not generic audit guidance. Focus on how THIS PARTICULAR control would be tested, documented, and evaluated in a real-world environment.
 
     DO NOT include any title headings that repeat the control text. Instead, start with a section titled "**Control Interpretation**" and continue from there.
 
-    1. **Control Interpretation:** 
-    - Provide a specific interpretation of what THIS control means in practical terms (keep it short)
+    1. **Control Interpretation:**
+    - Provide a clear, concise explanation of what this control is intended to accomplish
+    - Identify the specific risks this control is designed to mitigate
+    - Explain the regulatory or compliance context for this control (if applicable)
+    - Include insights that only an expert with deep domain knowledge would provide
 
     2. **Maturity-Based Implementation Approaches:**
     - Describe how THIS control is implemented in LOW maturity organizations (manual processes, ad-hoc approaches)
     - Describe how THIS control is implemented in MEDIUM maturity organizations (partial automation, some standardization)
     - Describe how THIS control is implemented in HIGH maturity organizations (fully automated, tool-integrated, proactive approaches)
+    - Include specific tools, technologies, and methodologies that organizations at each maturity level might use
+    - Provide concrete examples of what each maturity level looks like in practice
 
-    3. **How to Test and Document THIS SPECIFIC Control:** 
+    3. **Expected Findings for THIS SPECIFIC Control:** Use the exact format "It is an audit finding if...":
+
+    - Critical Findings for THIS CONTROL (3-4 examples):
+        * It is a critical audit finding if... [specific scenario for THIS control]
+        * It is a critical audit finding if... [specific scenario for THIS control]
+        * It is a critical audit finding if... [specific scenario for THIS control]
+
+    - Major Findings for THIS CONTROL (3-4 examples):
+        * It is a major audit finding if... [specific scenario for THIS control]
+        * It is a major audit finding if... [specific scenario for THIS control]
+
+    - Minor Findings for THIS CONTROL (3-4 examples):
+        * It is a minor audit finding if... [specific scenario for THIS control]
+
+    4. **Industry Best Practices for THIS CONTROL:**
+    - Describe what leading organizations are doing to excel at this control
+    - Mention specific frameworks, standards, or methodologies that address this control area
+    - Include cutting-edge approaches or emerging trends related to this control
+    - Provide insights that only a senior expert with extensive experience would know
+
+    5. **Tips and Tricks for THIS SPECIFIC Control:**
+    - Share expert techniques SPECIFICALLY for testing THIS control (not generic audit advice)
+    - What common mistakes and common pitfalls happen when testing THIS PARTICULAR control?
+    - What would experienced auditors focus on for THIS SPECIFIC control?
+    - Provide time-saving approaches SPECIFIC to THIS control
+    - How should auditors handle objections SPECIFICALLY about THIS control?
+    - Include advanced tactics that senior audit professionals use for this type of control
+
+    6. **How to Test and Document THIS SPECIFIC Control:** 
     Do NOT recommend generic documentation approaches like "use standard working papers" and focus on the UNIQUE documentation needs for THIS SPECIFIC control
-
 
     - What SPECIFIC preparatory steps are needed to test THIS control (exact documents, systems, or tools needed)
     - What REAL sampling approach makes sense for THIS control (exact sample sizes, selection criteria)
@@ -230,72 +264,20 @@ class ChecklistDocumentor:
     - Name ACTUAL tools, reports, or resources needed for THIS control test
     - What SPECIFIC documents must be collected for THIS control (exact contract sections, specific clauses, etc.)
     - What SPECIFIC details must be documented (e.g., "document the vendor security clauses in section X that specify Y")
+    - Include advanced testing approaches that experienced auditors use for this type of control
 
-
-    4. **Expected Findings for THIS SPECIFIC Control:** Use the exact format "It is an audit finding if...":
-    
-    - Critical Findings for THIS CONTROL (3-4 examples):
-        * It is a critical audit finding if... [specific scenario for THIS control]
-        * It is a critical audit finding if... [specific scenario for THIS control]
-        * It is a critical audit finding if... [specific scenario for THIS control]
-    
-    - Major Findings for THIS CONTROL (3-4 examples):
-        * It is a major audit finding if... [specific scenario for THIS control]
-        * It is a major audit finding if... [specific scenario for THIS control]
-    
-    - Minor Findings for THIS CONTROL (3-4 examples):
-        * It is a minor audit finding if... [specific scenario for THIS control]
-
-
-    5. **Detailed Documentation Example for THIS SPECIFIC Control:**
-    Based on a hypotethical scenario:
+    7. **Detailed Documentation Example for THIS SPECIFIC Control:**
+    Based on a hypothetical scenario:
     - Provide a CONCRETE, STEP-BY-STEP example of how to document THIS control 
     - Use SPECIFIC examples with sample text, actual findings, and detailed observations
     - Include REALISTIC sample dates, version numbers, and other specific details
     - Show what a COMPLETE set of documentation for THIS control would look like
     - Include a detailed testing narrative with specific steps followed and results obtained
-
-    6. **Tips and Tricks for THIS SPECIFIC Control:**
-    - Share expert techniques SPECIFICALLY for testing THIS control (not generic audit advice)
-    - What common mistakes and common pitfalls happen when testing THIS PARTICULAR control?
-    - What would experienced auditors focus on for THIS SPECIFIC control?
-    - Provide time-saving approaches SPECIFIC to THIS control
-    - How should auditors handle objections SPECIFICALLY about THIS control?
+    - Demonstrate what high-quality documentation from a senior auditor would contain
 
     IMPORTANT: Avoid generic audit language. Every response should be specifically tailored to the exact control provided. Use concrete examples, specific systems, realistic documents, and practical test steps that directly relate to this control.
 
-    Ensure your response is highly detailed, practical, and actionable - as if writing for a junior auditor who needs specific guidance on how to test THIS PARTICULAR control."""
-
-    def generate_supervisor_prompt(self, control, worker_response):
-        """Generate a prompt for the supervisor AI model to enhance the worker's response."""
-        return f"""You are a SENIOR AUDIT SUPERVISOR with decades of experience reviewing documentation for the following specific control: '{control}'
-
-    Below is the initial documentation prepared by a junior auditor:
-
-    {worker_response}
-
-    Your task is to ADD COMPREHENSIVE, STATE-OF-THE-ART expert guidance to enhance the existing documentation. As a senior expert, provide detailed insights that elevate the audit approach to best-in-class standards. Focus on adding high-value content that reflects your deep experience in the field.
-
-    Guidelines for your additions:
-    1. ALL of your additions MUST begin with "// " to clearly mark them as supervisor comments
-    2. Provide DETAILED, SUBSTANTIVE guidance based on your expertise - not brief comments
-    3. Add your insights at logical points in the existing document (at the end of each chapter/section)
-    4. Focus on practical, actionable insights specific to THIS control that reflect cutting-edge audit methodologies
-    5. Add significant value to EACH section
-    6. Share specialized knowledge that only a highly experienced auditor would know
-
-    PARTICULARLY IMPORTANT: For each maturity level mentioned (LOW, MEDIUM, HIGH), provide additional expert guidance on:
-    - Specific tools and technologies used at each maturity level for THIS control
-    - How leading organizations implement THIS control compared to less mature ones
-    - How audit approaches should be tailored to each maturity level
-    - Common pitfalls specific to each maturity level for THIS control
-    - Forward-looking trends and emerging best practices for THIS control
-
-    IMPORTANT: Your response should consist ONLY of the detailed expert guidance you want to add, each comment starting with "// ". 
-    DO NOT include the original worker response or titles or subtitles - I will combine your guidance with the original content myself. Do not ask the junior auditor to improve the text.
-    Your additions will be inserted at appropriate points in the original text.
-
-    Remember that your expert guidance should be specific to THIS control, not generic audit advice. Provide the kind of insights that would only come from an auditor with decades of specialized experience."""
+    Ensure your response is highly detailed, practical, and actionable - as if you are a senior audit expert with decades of experience providing guidance on how to test THIS PARTICULAR control."""
 
     def write_to_output_file(self, content):
         """Write content to the output file and flush immediately."""
@@ -310,103 +292,14 @@ class ChecklistDocumentor:
                 return False
         return False
 
-    def process_control_with_worker(self, control):
-        """Process a single control using the worker AI model."""
-        prompt = self.generate_worker_prompt(control)
-        worker_response = self.worker_erag_api.chat([
-            {"role": "system", "content": "You are an expert audit specialist providing detailed documentation for audit controls."},
+    def process_control(self, control):
+        """Process a single control using the enhanced worker prompt."""
+        prompt = self.generate_enhanced_prompt(control)
+        response = self.worker_erag_api.chat([
+            {"role": "system", "content": "You are a senior audit expert with decades of experience providing comprehensive and detailed documentation for audit controls."},
             {"role": "user", "content": prompt}
         ])
-        return worker_response
-
-    def process_control_with_supervisor(self, control, worker_response):
-        """Process a control with supervisor review of the worker's response."""
-        prompt = self.generate_supervisor_prompt(control, worker_response)
-        supervisor_response = self.supervisor_erag_api.chat([
-            {"role": "system", "content": "You are a senior audit expert with decades of experience adding detailed guidance to audit control documentation."},
-            {"role": "user", "content": prompt}
-        ])
-        return supervisor_response
-
-    def integrate_supervisor_comments(self, worker_response, supervisor_comments):
-        """Integrate supervisor comments at the end of each main section in the worker response."""
-        # Define the section patterns to look for
-        section_patterns = [
-            r'\*\*Control Interpretation\*\*',
-            r'\*\*Maturity-Based Implementation Approaches\*\*',
-            r'\*\*How to Test and Document.*?\*\*',
-            r'\*\*Expected Findings.*?\*\*',
-            r'\*\*Detailed Documentation Example.*?\*\*',
-            r'\*\*Tips and Tricks.*?\*\*'
-        ]
-        
-        # Split supervisor comments into individual comments
-        supervisor_comments = supervisor_comments.strip()
-        if not supervisor_comments:
-            return worker_response
-            
-        supervisor_lines = supervisor_comments.split('\n')
-        supervisor_comments_list = [line for line in supervisor_lines if line.strip().startswith('// ')]
-        
-        # If no proper supervisor comments, append them all at the end
-        if not supervisor_comments_list:
-            return f"{worker_response}\n\n{supervisor_comments}"
-        
-        # Find all section headers in the text
-        positions = []
-        
-        for pattern in section_patterns:
-            for match in re.finditer(pattern, worker_response, re.IGNORECASE):
-                positions.append(match.start())
-        
-        # If we couldn't find enough sections, fall back to a simpler approach
-        if len(positions) < 3:
-            return f"{worker_response}\n\n**Expert Comments:**\n\n{'\n'.join(supervisor_comments_list)}"
-        
-        # Sort positions to maintain the correct order
-        positions.sort()
-        
-        # Add the end of document as a final position
-        positions.append(len(worker_response))
-        
-        # Build the result by inserting comments at section boundaries
-        result = ""
-        last_pos = 0
-        
-        # Calculate comments per section
-        num_sections = len(positions) - 1  # -1 because the last position is end of document
-        comments_per_section = len(supervisor_comments_list) // num_sections
-        extra_comments = len(supervisor_comments_list) % num_sections
-        
-        # Insert comments at each section boundary
-        for i in range(num_sections):
-            # End of current section / start of next section
-            next_pos = positions[i + 1]
-            
-            # Add content of current section
-            result += worker_response[last_pos:next_pos]
-            
-            # Calculate comments for this section
-            num_comments = comments_per_section
-            if i < extra_comments:
-                num_comments += 1
-                
-            # If we have comments for this section, add them
-            if num_comments > 0:
-                start_idx = i * comments_per_section + min(i, extra_comments)
-                end_idx = start_idx + num_comments
-                
-                section_comments = supervisor_comments_list[start_idx:end_idx]
-                
-                # Add the comment block
-                result += "\n\n**Expert Comments:**\n\n"
-                result += "\n".join(section_comments)
-                result += "\n\n"
-            
-            # Update position for next iteration
-            last_pos = next_pos
-        
-        return result
+        return response
 
     def process_checklist(self):
         """Process the checklist and generate responses for each control."""
@@ -425,14 +318,8 @@ class ChecklistDocumentor:
             # Configuration info for confirmation dialog
             config_info = (
                 f"Configuration:\n"
-                f"- Using worker model: {self.worker_erag_api.model}\n"
+                f"- Using model: {self.worker_erag_api.model} (enhanced with expert guidance)\n"
             )
-            
-            if self.use_supervisor and self.supervisor_available:
-                config_info += f"- Using supervisor model: {self.supervisor_erag_api.model}\n"
-                config_info += "- Two-phase processing enabled (enhanced quality)\n"
-            else:
-                config_info += "- Supervisor review disabled\n"
             
             # Ask for confirmation with progress details
             confirm = messagebox.askyesno(
@@ -462,8 +349,7 @@ class ChecklistDocumentor:
                 f"File: {os.path.basename(self.file_path)}\n"
                 f"Sheet: {self.selected_sheet}\n"
                 f"Column: {self.selected_column}\n"
-                f"Models used: {self.worker_erag_api.model}"
-                f"{' + ' + self.supervisor_erag_api.model if self.use_supervisor and self.supervisor_available else ''}\n\n"
+                f"Model used: {self.worker_erag_api.model} (enhanced with expert guidance)\n\n"
                 f"{'='*80}\n\n"
             )
             self.write_to_output_file(file_header)
@@ -483,34 +369,18 @@ class ChecklistDocumentor:
                 
                 print(highlight(f"Processing control {i}/{len(controls)}: {control}"))
                 
-                # First, process with worker
-                worker_response = self.process_control_with_worker(control)
-                
-                final_response = worker_response
-                
-                # If supervisor is enabled and available, use it to improve the response
-                if self.use_supervisor and self.supervisor_available:
-                    progress_label.config(text=f"Supervisor adding expert guidance to control {i}/{len(controls)}...")
-                    progress_window.window.update()
-                    
-                    # Check if paused before supervisor processing
-                    self.check_if_paused()
-                    
-                    # Get supervisor's comments
-                    supervisor_comments = self.process_control_with_supervisor(control, worker_response)
-                    
-                    # Integrate supervisor comments into worker response
-                    final_response = self.integrate_supervisor_comments(worker_response, supervisor_comments)
+                # Process with enhanced worker prompt
+                response = self.process_control(control)
                 
                 # Format the result for text output (no duplication of title)
-                text_output = f"Control {i}: {control}\n\n{final_response}\n\n{'='*80}\n\n"
+                text_output = f"Control {i}: {control}\n\n{response}\n\n{'='*80}\n\n"
                 
                 # Write this control's documentation to the output file
                 self.write_to_output_file(text_output)
                 
                 # For PDF, we need to create clean content without duplicate titles
                 # We'll completely skip any title/header creation here and let the PDF processor handle it
-                pdf_content = final_response
+                pdf_content = response
                 
                 # Add to PDF content - using a simple title to avoid duplication
                 # This title will be processed by the PDF renderer
@@ -559,9 +429,7 @@ class ChecklistDocumentor:
             base_filename = os.path.splitext(os.path.basename(pdf_file))[0]
             
             # Create PDF generator
-            model_info = self.worker_erag_api.model
-            if self.use_supervisor and self.supervisor_available:
-                model_info += f" + {self.supervisor_erag_api.model}"
+            model_info = f"{self.worker_erag_api.model} (enhanced with expert guidance)"
             
             pdf_generator = PDFReportGenerator(
                 self.output_folder, 
@@ -589,16 +457,14 @@ class ChecklistDocumentor:
         """Create a progress window for showing processing status."""
         window = tk.Toplevel()
         window.title("Processing Checklist")
-        window.geometry("500x220")
+        window.geometry("500x200")
         window.resizable(False, False)
         
         frame = ttk.Frame(window, padding="20")
         frame.pack(fill="both", expand=True)
         
         # Configuration display
-        config_text = f"Worker Model: {self.worker_erag_api.model}"
-        if self.use_supervisor and self.supervisor_available:
-            config_text += f"\nSupervisor Model: {self.supervisor_erag_api.model}"
+        config_text = f"Model: {self.worker_erag_api.model} (enhanced with expert guidance)"
         
         ttk.Label(frame, text="Documenting Checklist Items", font=("Arial", 12, "bold")).pack(pady=(0, 5))
         ttk.Label(frame, text=config_text, foreground="blue").pack(pady=(0, 15))
@@ -928,29 +794,13 @@ class ChecklistDocumentor:
         
         self.has_header_var.trace_add("write", update_header_setting)
         
-        # Supervisor checkbox (if available)
-        if self.supervisor_available:
-            self.use_supervisor_var = tk.BooleanVar(value=True)
-            supervisor_check = ttk.Checkbutton(
-                config_frame, 
-                text=f"Use supervisor model ({self.supervisor_erag_api.model}) to enhance results", 
-                variable=self.use_supervisor_var
-            )
-            supervisor_check.pack(anchor="w", padx=5, pady=5)
-            
-            ttk.Label(
-                config_frame,
-                text="Using the supervisor model will provide additional expert insights and maturity-based guidance\n"
-                     "to enhance basic documentation, but will take more time to process.",
-                foreground="gray"
-            ).pack(anchor="w", padx=5, pady=0)
-            
-            # Update the use_supervisor flag when checkbox changes
-            def update_supervisor_setting(*args):
-                self.use_supervisor = self.use_supervisor_var.get()
-            
-            self.use_supervisor_var.trace_add("write", update_supervisor_setting)
-            self.use_supervisor = self.use_supervisor_var.get()
+        # Additional information about enhanced AI model
+        ttk.Label(
+            config_frame,
+            text="The AI model will provide comprehensive documentation with expert-level insights\n"
+                 "and maturity-based guidance for each checklist item.",
+            foreground="gray"
+        ).pack(anchor="w", padx=5, pady=5)
         
         # Output format checkbox
         output_frame = ttk.Frame(config_frame)
@@ -1027,10 +877,7 @@ class ChecklistDocumentor:
             font=("Arial", 14, "bold")
         ).pack(side="left")
         
-        if self.supervisor_available:
-            model_info = f"Using: {self.worker_erag_api.model} | Supervisor: {self.supervisor_erag_api.model}"
-        else:
-            model_info = f"Using: {self.worker_erag_api.model}"
+        model_info = f"Using: {self.worker_erag_api.model} (enhanced with expert guidance)"
             
         ttk.Label(
             header_frame,
@@ -1089,13 +936,7 @@ class ChecklistDocumentor:
         try:
             print(info("Starting Checklist Documenter..."))
             
-            if self.supervisor_available:
-                print(info(f"Worker model: {self.worker_erag_api.model}"))
-                print(info(f"Supervisor model: {self.supervisor_erag_api.model} (enabled by default)"))
-            else:
-                print(info(f"Using model: {self.worker_erag_api.model}"))
-                print(info("Supervisor model not available - operating in single model mode"))
-                
+            print(info(f"Using model: {self.worker_erag_api.model} (enhanced with expert guidance)"))
             print(info("Press Ctrl+C during processing to pause/resume."))
                 
             window = self.create_ui_window()
